@@ -39,13 +39,13 @@ forvalues i = 2003/2020{
 	
 	* CPI, UE, merge
 		cap destring annee mois trim, replace
-		merge m:1 annee mois using "Inflation/CPI_base_2015.dta"
+		merge m:1 annee mois using "Data/Inflation/CPI_base_2015.dta"
 		drop _merge 
 		drop if annee != `i'
-		merge m:1 annee trim using "Unemployment/ueq_FR.dta" // Finding data by departement? 
+		merge m:1 annee trim using "Data/Unemployment/ueq_FR.dta" // Finding data by departement? 
 		drop _merge
 		drop if annee != `i'
-		merge m:1 annee mois using "SMIC/smic_FR.dta"
+		merge m:1 annee mois using "Data/SMIC/smic_FR.dta"
 		drop _merge 
 		drop if annee != `i'
 		lab var smic_h "SMIC Horaire"
@@ -65,7 +65,7 @@ clear all
 	forvalues i = 2003/2020{
 		
 		display "appending year `i'"
-		append using Clean/df_`i'.dta
+		append using Data/Clean/df_`i'.dta
 	}
 
 	quietly destring * , replace
@@ -152,8 +152,7 @@ use Data/Clean/df1_master_notrim, clear
 	
 	drop if (deparc == "97" | deparc == "9A" | deparc == "9C" | deparc == "9E") 
 	
-	drop if (depeta == "9A" | depeta == "9B" | depeta == "9C" | depeta == "9D" | depeta == "9E" | depeta == "9F" |
-      depeta == "9G" | depeta == "9H" | depeta == "9I" | depeta == "9J" | depeta == "9K" | depeta == "9L" | depeta == "9M")
+	drop if (depeta == "9A" | depeta == "9B" | depeta == "9C" | depeta == "9D" | depeta == "9E" | depeta == "9F" | depeta == "9G" | depeta == "9H" | depeta == "9I" | depeta == "9J" | depeta == "9K" | depeta == "9L" | depeta == "9M")
 
 	* Active Population 
 	
@@ -231,25 +230,25 @@ use Data/Clean/df1_master_notrim, clear
 	gen non_agr 		= (naf10 != "AZ" ) 							// non-agricultural 
 	gen for_profit 		= (naf10 != "OQ") 							// for-profit 
 	//gen hours			= (hhc <= 70 & hhc>=35)						// working >=35 & <= 70 hours 
-	gen min_smic 		= (salmee >= smic_m)						// employee makes minimum wage 
+	//gen min_smic 		= (salmee >= smic_m)						// employee makes minimum wage 
 	gen interruption 	= (pastra == 1) 							// interrupted workschedule 
 	gen mod_agree 		= (redic == 1 ) 							// modulation agreemnt (dissapears after 2013!)
 	gen ue_retired 		= (acteu != 1 | retrai == 1 | ret == 1)  	// ue or retired 
 	gen misc_contracts 	= (contra != 1 & contra != 2) 				// holds a miscallaneous work contract (something else than CDI or CDD)
-	gen full_time 		= (tppred !=.)		 						// full-time workers & part-time 
+	gen full_time 		= (tppred == 1)		 						// full-time workers 
 	
-	gen sample_worker = (non_agr == 1 & for_profit == 1 & hours ==1 & min_smic == 1 & interruption != 1 & mod_agree != 1 & ue_retired != 1 & misc_contracts != 1 & full_time == 1) 
+	gen sample_worker = (non_agr == 1 & for_profit == 1 /*& hours ==1*/ & min_smic == 1 & interruption != 1 & mod_agree != 1 & ue_retired != 1 & misc_contracts != 1 & full_time == 1) 
 	
 	keep if sample_worker == 1 
 	
-save Clean/df2_master_trimmed.dta, replace  
+save Data/Clean/df2_master_trimmed.dta, replace  
 
 
 **********************************************
 ***** Harmonizing Variables Across Years ***** 
 **********************************************
 
-use Clean/df2_master_trimmed, clear 
+use Data/Clean/df2_master_trimmed, clear 
 
 	* I need the retropoled weights on pre-2013 data if comparing pre-post 2013.
 	
@@ -262,10 +261,11 @@ use Clean/df2_master_trimmed, clear
 	
 	* Harmonizing Indicator for children & married 
 	
+	cap drop enfant 
 	gen enfant 		= . 
-	replace enfant 	= (em1 == 1 & annee <=2012)
-	replace enfant 	= (enfred == 1 & annee >= 2013)
-	drop em1 enfred
+	replace enfant 	= 1 if (em1 == 1 | enfred == 1)
+	replace enfant 	= 0 if (em1 ==2 |enfred ==2)
+	*drop em1 enfred
 	lab var enfant "Présence des enfants de la personne dans le logement"
 
 	* Generating an urban/ rural indicator 
@@ -476,7 +476,7 @@ use Clean/df2_master_trimmed, clear
 			- If multiple answers are given, the new answer signals a change. Hence, the most 
 			recently given value carries over until reaching the new entry. From there, the new 
 			entry is carried over. 
-	*/
+	
 	
 	foreach var in hplus salred {
 		
@@ -484,6 +484,7 @@ use Clean/df2_master_trimmed, clear
 	
 		bysort indiv_num (datdeb): replace `var' = `var'[_n+1] if missing(`var') & !missing(`var'[_n+1])
 	}
+	*/
 	
 save Data/Clean/df3_master_harmonized, replace 
 
@@ -786,12 +787,12 @@ use Data/Clean/df4_master_final, clear
 	save Data/Clean/df_macron.dta, replace
 	restore
 	
-	
+	bysort annee: tab nbenfind
 *****************
 ***** FIXES *****
 *****************
 
-foreach df in df1_master_notrim df2_master_trimmed df3_master_harmonized df4_master_final df_tepa df_abrog df_macron {
+foreach df in df2_master_trimmed df3_master_harmonized df4_master_final df_tepa df_abrog df_macron {
 	
 	
 	use Data/Clean/`df', clear
@@ -799,9 +800,9 @@ foreach df in df1_master_notrim df2_master_trimmed df3_master_harmonized df4_mas
 	cap drop enfant 
 	
 	gen enfant 		= . 
-	replace enfant 	= (em1 == 1 & annee <=2012)
-	replace enfant 	= (enfred == 1 & annee >= 2013)
-	drop em1 enfred
+	replace enfant 	= 1 if (em1 == 1 | enfred == 1)
+	replace enfant 	= 0 if (em1 ==2 |enfred ==2)
+	//drop em1 enfred
 	lab var enfant "Présence des enfants de la personne dans le logement "
 
 
