@@ -91,7 +91,7 @@ cd "/Users/glpou/Documents/SCIENCESPO/M2/S4/Thesis/1.Package/EEC_03_20"
 
 ***** Log Salary by Hours (just taking the means, not accurate)
 
-use Data/Clean/df_wedges, clear
+use Data/Clean/p_df_wedges, clear
 	preserve 
 	
 		egen N = count(log_hourly_salred), by(empnbh_cat)
@@ -564,7 +564,6 @@ use Data/Clean/df_wedges, clear
 	gen pos_wedge = (wedge > 0)
 
 . replace pos_wedge = . if wedge == . 
-(742,233 real changes made, 742,233 to missing)
 
 . tab pos_wedge
 
@@ -641,6 +640,65 @@ r(199);
 
 . twoway (bar pos_prop empnbh)
 
+
+	* PEPA Bonus Eligibility
 	
+	/*replace valprie = 0 if valprie == . 
+	replace valprie_2015 = 0 if valprie_2015 == .
+	gen just_wage_2015 = salmee_2015 - valprie_2015 if prim ==1 
+	
+	gen elig_pepa = (just_wage_2015 < (smic_m * 3) & datdeb > date("01jan2019", "DMY"))
+	order elig_pepa*/
+	
+	
+	
+	
+	***** Non-Monotonicity of Hourly wages *****
+
+* MAKE SURE THIS FEATURE IS ROBUST (BREAK DOWN INTO SUB-GROUPS) * 
+
+	* Figure 1 from Bick et al. 
+	
+	* Overall 
+	
+	preserve 
+	
+		keep if datdeb_q <= tq(2007q3)
+	
+		collapse (mean) salred, by(empnbh_cat)
+		
+		graph bar salred, over(empnbh_cat)
+		
+	restore 
+	
+	* By motivation type
+		
+	preserve 
+		
+		collapse (mean) salred, by(empnbh_cat stplc)
+		
+		graph bar salred, over(empnbh_cat) over(stplc)
+	
+	restore 
+	
+	
+	
+		*** Colonne (1) et (2) : regression pour l'ensemble des categories professionnelles
+xttab dumoct07 if echant_indpt==1  &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+xttab dumoct07 if echant_indpt==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+
+
+*** Colonne (3) et (4) : regression pour l'ensemble des categories professionnelles en Log
+xi: xtreg lempnbh dum_treat_sal_1  dummy  if echant_indpt==1  & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
+xi: xtreg lempnbh dum_treat_sal_1 treat_et_round  dummy round if echant_indpt==1   & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
+
+*** Colonne 5) et (6) : regression pour l'artisanat
+xttab dumoct07 if echant_art==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+xttab dumoct07 if echant_art==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+
+*** Colonne (7) et (8) : regression pour le commerce
+xttab dumoct07 if echant_com==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+xttab dumoct07 if echant_com==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+
 
 

@@ -4,6 +4,8 @@
 **************************
 **************************
 
+cd "/Users/glpou/Documents/SCIENCESPO/M2/S4/Thesis/1.Package/EEC_03_20"
+
 use Data/Clean/df4_master_final, clear
 
 cap ssc install coefplot
@@ -44,15 +46,13 @@ cap ssc install coefplot
 	
 	gen wedge 		      	= hplus - empnbh 
 	
-	gen neg_wedge   	  	= (wedge < 0)
+	gen wedge_sign 			= . 
 	
-	replace neg_wedge 		= . if wedge == . 
-		
-	gen pos_wedge       	= (wedge > 0)
+	replace wedge_sign 		= 1 if wedge > 0 
+
+	replace wedge_sign 		= 0 if wedge == 0 
 	
-	replace pos_wedge 		= . if wedge == .  
-	
-	gen worked 		      	= (wedge==0)
+	replace wedge_sign 		= -1 if wedge < 0
 	
 	gen log_salred 	      	= log(salred)
 	
@@ -166,74 +166,142 @@ save Data/Clean/df_wedges.dta, replace
 
 	* Using OLS
 
-use Data/Clean/p_df_wedges, clear
+use Data/Clean/df_wedges, clear
 	
-	xtset indiv_num datdeb
+	global controls male female age_group educ_degree married not_married child no_child salmet
 	
-	global controls male female age_group educ_degree married not_married child no_child 
-	
-	reghdfe wedge i.annee $controls [pweight = extri], cluster(indiv_num) 
+	reghdfe wedge i.annee [pweight = extri], absorb(indiv_num) cluster(indiv_num) 
 	
 	margins annee
 
 	marginsplot, ///
 				name(margplot, replace) ///
-				title("Unadjusted Wedge over Time - Linear Prediction") ///
-				ytitle("Unadjusted Mean Wedge") ///
+				title("Adjusted Wedge over Time - Linear Prediction (OG Sample)") ///
+				ytitle("Adjusted Mean Wedge") ///
 				xtitle("Year")
 				
-	graph export "Output/Figures/Wedge/mean_wedge.png", as(png) replace
+	graph export "Output/Figures/Wedge/og_mean_wedge_FE.png", as(png) replace
 	
-	
-	
-***** Non-Monotonicity of Hourly wages *****
-
-* MAKE SURE THIS FEATURE IS ROBUST (BREAK DOWN INTO SUB-GROUPS) * 
-
-	* Figure 1 from Bick et al. 
-	
-	hist empnbh_cat 
-	
-	* Overall 
-	
-	preserve 
-	
-		keep if datdeb_q <= tq(2007q3)
-	
-		collapse (mean) salred, by(empnbh_cat)
-		
-		graph bar salred, over(empnbh_cat)
-		
-	restore 
-	
-	* By motivation type
-		
-	preserve 
-		
-		collapse (mean) salred, by(empnbh_cat stplc)
-		
-		graph bar salred, over(empnbh_cat) over(stplc)
-	
-	restore 
-	
-
 *****************************
-**# Wedge Distributions *****
+**# Wedge Heterogeneity *****
 *****************************
+
+use Data/Clean/df_wedges, clear 
+
+***** Aggregate 2003-2007 *****
+	
+	global controls sexe age_group educ_degree married enfant salmet 
+
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.enfant i.salmet 
+
+    reghdfe wedge $i_controls if datdeb_q <= tq(2007q3) [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Demographics
+
+    coefplot 	(m_sexe)(m_age_group) ///
+				(m_educ_degree)(m_married)(m_enfant), ///
+          horizontal ///
+          ciopts(recast(rcap) lcolor(gs10)) ///
+          mcolor(blue) msymbol(circle) ///
+          title("Average Adjusted Wedge by Demographic Group (2003–2007") xtitle("Adjusted Wedge") ///
+          nolabel legend(off) ///
+          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
+						1.age_group = "18 - 24" ///
+						2.age_group = "25 - 54" ///
+						3.age_group = "55 - 64" ///
+						1.educ_degree = "No Tertiary Education" ///
+						2.educ_degree = "Vocational Training" ///
+						3.educ_degree = "College Degree" ///
+						1.married = "Married" 0.married = "Not Married" ///
+						1.enfant = "Child in HH" 0.enfant = "No Child in HH"  ///
+          )
+
+    graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_H_03-07.png", as(png) replace 
+	
+	* Across Income Brackets 
+	
+	coefplot 	(m_salmet), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				title("Average Adjusted Wedge by Wage Bracket (2003–2007, OG Sample)") xtitle("Adjusted Wedge") ///
+				nolabel legend(off) ///
+				coeflabels(	1.salmet = "-500" 2.salmet = "500–999" 3.salmet = "1,000–1,249" ///
+				4.salmet = "1,250–1,499" 5.salmet = "1,500–1,999" 6.salmet = "2,000–2,499" ///
+				7.salmet = "2,500–2,999" 8.salmet = "3,000–4,999" 9.salmet = "5,000–7,999" ///
+				10.salmet = "8,000+" )
+	
+	graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_bywagecat_03-07.png", as(png) replace
+	
+	/*
+		In the above regression, I do not include empnbh_cat in order to avoid mechanically
+		controlling for something which defines the dependent variable.
+		
+		However, to study the wedge across different wage brackets, I include them in the next regression.
+	*/
+	
+	global controls sexe age_group educ_degree married enfant salmet empnbh_cat
+
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.enfant i.salmet i.empnbh_cat
+	
+	reghdfe wedge $i_controls if datdeb_q <= tq(2007q3) [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Hours Worked
+	
+	coefplot 	(m_empnbh_cat), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				title("Average Adjusted Wedge by Hours worked (2003–2007, OG Sample)") xtitle("Adjusted Wedge") ///
+				nolabel legend(off) ///
+				coeflabels(1.empnbh_cat = "-20" 2.empnbh_cat = "20–24" 3.empnbh_cat = "25–29" ///
+				4.empnbh_cat = "30–34" 5.empnbh_cat = "35–39" 6.empnbh_cat = "40–44" 7.empnbh_cat = "45–49" ///
+				8.empnbh_cat = "50–54" 9.empnbh_cat = "55–59" 10.empnbh_cat = "60–64" 11.empnbh_cat = "65+")
+	
+	graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_byhoursworked_03-07.png", as(png) replace
+
+****************************
+**# Wedge Distribution *****
+****************************
 
 use Data/Clean/p_df_wedges, clear
+
+	forvalues i = 2003/2020{
+		
+		kdensity wedge if annee == `i', width(1) title(Wedge Distribution (`i'))
 	
-	global controls sexe age_group educ_degree married enfant
-	
+		graph export "Output/Figures/Distributions/W_Distrib_`i'.png", as(png) replace
+		
+		kdensity empnbh if annee == `i', width(1) title(Empnbh Distribution (`i'))
+			
+		graph export "Output/Figures/Distributions/empnbh_Distrib_`i'.png", as(png) replace
+	}
+
 	preserve
-		
 		collapse (mean) prop_pos_wedge = pos_wedge (count) n=pos_wedge, by(empnbh_round)
-		
 		twoway (line prop_pos_wedge empnbh_round), ///
-    ytitle("Proportion with Positive Wedge") ///
-    xtitle("Weekly Hours Worked") ///
-    title("Positive Wedge Rate by Hours Worked")
-		
+		ytitle("Proportion with Positive Wedge") ///
+		xtitle("Weekly Hours Worked") ///
+		title("Positive Wedge Rate by Hours Worked")
+	restore 
+	
+kdensity empnbh if annee > 2007 & annee <=2012, xline(35 40)
+	
+	graph export "Output/after_tepa_before abrog.png", as(png) replace 
 
 *****************************
 **# WEDGE-HOURS Profile *****
@@ -264,14 +332,11 @@ use Data/Clean/p_df_wedges, clear
     title("Smoothed Wedge Across Hours Worked")
 	
 
-
-
-
 ****************************
 **# WAGE-HOURS Profile *****
 ****************************	
 
-use Data/Clean/p_df_wedges, clear
+use Data/Clean/df_wedges, clear
 	
 	global controls sexe age_group educ_degree married enfant
 	
@@ -286,11 +351,11 @@ use Data/Clean/p_df_wedges, clear
 							ciopts(recast(rcap)) msymbol(O) ///
 							mcolor(black) lcolor(black) ///
 							ylabel(, angle(horizontal)) ///
-							xtitle("Hours Bin") ytitle("Predicted Monthly Wage (Adjusted)") ///
-							title("The Wage-Hours Profile (2003-2007)") ///
+							xtitle("Hours Bin (Worked in the Reference Week)") ytitle("Predicted Monthly Wage (Adjusted)") ///
+							title("The Wage-Hours Profile (2003-2007, OG Sample)") ///
 							xlabel(, angle(45))
 		
-	graph export "Output/Figures/Wage_Hours_Profile/Wage_Hours_Profile_03-07.png", as(png) replace
+	graph export "Output/Figures/Wage_Hours_Profile/og_Wage_Hours_Profile_03-07.png", as(png) replace
 	
 	* log hourly wage 
 	
@@ -298,52 +363,9 @@ use Data/Clean/p_df_wedges, clear
 
 							****** CONFUSED ABOUT THESE GRAPHS *****
 					****** Wage Monotonically Decreasing in Hours ??? ******
-								     ***** WEIGHTS ??? *****
-									 
-									 
-*****************************
-**# Wedge Heterogeneity *****
-*****************************
+								    
+									
 
-use Data/Clean/df_wedges, clear 
-
-	***** Aggregate 2003-2007 *****
-
-    xtset indiv_num datdeb 
-
-    global controls sexe age_group educ_degree married enfant
-
-    global i_controls i.sexe i.age_group i.educ_degree i.married i.enfant
-
-    reghdfe wedge $i_controls if datdeb_q <= tq(2007q3) [pweight = extri], absorb(datdeb) cluster(indiv_num)
-    estimates store base_model
-
-    foreach var in $controls {
-        estimates restore base_model
-        margins `var', post
-        estimates store m_`var'
-    }
-
-    coefplot 	(m_sexe)(m_age_group) ///
-				(m_educ_degree)(m_married)(m_enfant), ///
-          horizontal ///
-          ciopts(recast(rcap) lcolor(gs10)) ///
-          mcolor(blue) msymbol(circle) ///
-          title("Average Adjusted Wedge by Demographic Group (2003–2007, OG Sample)") ///
-          nolabel legend(off) ///
-          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
-						1.age_group = "18 - 24" ///
-						2.age_group = "25 - 54" ///
-						3.age_group = "55 - 64" ///
-						1.educ_degree = "No Tertiary Education" ///
-						2.educ_degree = "Vocational Training" ///
-						3.educ_degree = "College Degree" ///
-						1.married = "Married" 0.married = "Not Married" ///
-						1.enfant = "Child in HH" 0.enfant = "No Child in HH"  ///
-          )
-
-    graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_H_03-07.png", as(png) replace 
-	
 **********************************
 **# Wedge-Hours Distribution *****
 **********************************
@@ -443,8 +465,6 @@ use Data/Clean/df_wedges, clear
 			legend(order(1 "Actual Hours" 2 "Mean Actual Hours" 3 "Desired Hours" 4 "Mean Desired Hours")ring(0) position(4))
 		
 	graph export "Output/Figures/CDFs/Weekly_Hours/og_weekly_hours_03-07.png", as(png) replace
-	
-	restore
 	
 	* Working vs desired Working Hours (year by year)
 	
@@ -563,14 +583,12 @@ use Data/Clean/p_df_wedges, clear
 ***************
 ***** DiD *****
 ***************	
-
-	* Looking at effect on desired hours worked is NOVEL??
-
+	
 use Data/Clean/p_df_wedges, clear
 
-	keep if in_tepa  //& hhc != . & hplus != . & salred != . 
+	keep if in_tepa  & empnbh != . & hplus != . & salred != .
 	
-	global i_controls i.sexe i.age_group i.educ_degree i.married i.enfant
+	global i_controls sexe age_group educ_degree married enfant salred 
 	
 	global c_controls CBC gs_gdp
 
@@ -579,50 +597,38 @@ use Data/Clean/p_df_wedges, clear
 	gen treatment = (dom_bel == 1 | dom_ger == 1 | dom_swz == 1 | dom_lux == 1) & france == 1
 	
 	gen control = (trans_bel == 1 | trans_ger == 1| trans_swz == 1 | trans_lux == 1)
+	
+	gen optim 		= . 
+	replace optim  	= 1 if (cse == 34 |cse == 35 | cse==37 | cse==38 | cse==46 | cse==48) // manager 
+	replace optim 	= 0 if (cse == 62 | cse == 63 | cse == 65 | cse == 67 | cse == 68)	  // laborer 
 
 	keep if control | treatment
 	
 	gen post_treatment = treatment * post_tepa 
 	
-	gen triple_d_m = treatment * manager * post_tepa 
-	
-	gen triple_d_l = treatment * laborer * post_tepa 
-	
-	gen trip_motiv = treatment * stplc * post_tepa 
-	
-	
-	*** Pre-Trends *** 
-	
-	gen rel_time = tq(2008q1) - datdeb_q 			// (t - F + 1)
-	
-	replace rel_time = rel_time + 4 
-	
-	reghdfe wedge i.rel_time, absorb(treatment) cluster(indiv_num)
-	
-	pretrends power numpre() 0.5 
-	
-	  
+	gen triple_d = treatment * optim * post_tepa 
 	 
 	*** Regressions ***
 	
 	* Y = wedge  
 	
-	reghdfe wedge post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) // 
+	reghdfe wedge post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) 
 	
 	* Y = hplus (desired weekly hours)
 	
-	reghdfe hplus post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	reghdfe hplus post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) 
 
 	* Y = empnbh (hours worked that week)
 	
-	reghdfe empnbh post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num) cluster(indiv_num) 
+	reghdfe empnbh post_treatment treatment $controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) 
 	
 	* Y = emphre (OT hours)
 	
-	reghdfe emphre post_treatment treatment $i_controls $c_controls [pweight=extri], absorb(indiv_num) cluster(indiv_num) // *** 
+	reghdfe emphre post_treatment treatment $i_controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) // signif but treatment ommitted. Look into further. That said, not focusing on fiscal optim.
+
 	
 	
-	
+//////////////////// MISC/ WIP //////////////////////// 
 	
 ***** Small Firms (<2 employees) vs. Independent Workers *****
 
@@ -631,28 +637,16 @@ use Data/Clean/p_df_wedges, clear
 	keep if in_tepa 
 	
 	gen treatment = 
+
+***** Treatment: Positive Wedge (coonstrained at 35, wedge > 0) || Control: negative wedge, either 0 or constant emphre throughout ***** 
+
+
 	
 	
 	
 	
 
 	
-	*** Colonne (1) et (2) : regression pour l'ensemble des categories professionnelles
-xttab dumoct07 if echant_indpt==1  &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_indpt==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-
-
-*** Colonne (3) et (4) : regression pour l'ensemble des categories professionnelles en Log
-xi: xtreg lempnbh dum_treat_sal_1  dummy  if echant_indpt==1  & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
-xi: xtreg lempnbh dum_treat_sal_1 treat_et_round  dummy round if echant_indpt==1   & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
-
-*** Colonne 5) et (6) : regression pour l'artisanat
-xttab dumoct07 if echant_art==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_art==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-
-*** Colonne (7) et (8) : regression pour le commerce
-xttab dumoct07 if echant_com==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_com==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
 
 
 ***** Bunching at 35hours ***** 
@@ -665,6 +659,10 @@ use Data/Clean/p_df_wedges, clear
 
 	egen sd_OT = sd(emphre), by(indiv_num)
 	
+	egen sd_work	=	sd(empnbh), by(indiv_num)
+	
+	gen constant_work = (sd_work == 0)
+	
 	gen constant_OT = (sd_OT == 0)
 	
 	gen control = (constant_OT == 1 & treatment == 0 & empnbh > 40)
@@ -675,12 +673,7 @@ use Data/Clean/p_df_wedges, clear
 	
 	reghdfe wedge post_treatment treatment $i_controls $c_controls [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num)
 	
-	
-	
-	
-	
-	
-	
+
 	
 	* Pooled Sample 
 	

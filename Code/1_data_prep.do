@@ -55,7 +55,6 @@ forvalues i = 2003/2020{
 		quietly tostring *, replace 
 		
 	save Data/Clean/df_`i'.dta, replace
-	
 	}
 
 	* Appending all years (building EEC_03_20)
@@ -237,7 +236,7 @@ use Data/Clean/df1_master_notrim, clear
 	gen misc_contracts 	= (contra != 1 & contra != 2) 				// holds a miscallaneous work contract (something else than CDI or CDD)
 	gen full_time 		= (tppred == 1)		 						// full-time workers 
 	
-	gen sample_worker = (non_agr == 1 & for_profit == 1 /*& hours ==1*/ & min_smic == 1 & interruption != 1 & mod_agree != 1 & ue_retired != 1 & misc_contracts != 1 & full_time == 1) 
+	gen sample_worker = (non_agr == 1 & for_profit == 1 /*& hours ==1 & min_smic == 1*/ & interruption != 1 & mod_agree != 1 & ue_retired != 1 & misc_contracts != 1 & full_time == 1) 
 	
 	keep if sample_worker == 1 
 	
@@ -466,26 +465,6 @@ use Data/Clean/df2_master_trimmed, clear
 	replace nivet = "." if nivet == "In"
 	destring nivet, replace
 	
-	/* 
-		Harmonizing hplus and salred across survey rounds.
-		
-		ASSUMPTION:
-		
-			- If only one answer is given across survey waves, that answer applies to all waves. 
-			
-			- If multiple answers are given, the new answer signals a change. Hence, the most 
-			recently given value carries over until reaching the new entry. From there, the new 
-			entry is carried over. 
-	
-	
-	foreach var in hplus salred {
-		
-		bysort indiv_num (datdeb): replace `var' = `var'[_n-1] if missing(`var') & !missing(`var'[_n-1])
-	
-		bysort indiv_num (datdeb): replace `var' = `var'[_n+1] if missing(`var') & !missing(`var'[_n+1])
-	}
-	*/
-	
 save Data/Clean/df3_master_harmonized, replace 
 
 ****************************************
@@ -494,7 +473,7 @@ save Data/Clean/df3_master_harmonized, replace
 
 use Data/Clean/df3_master_harmonized, clear
 
-	/* Question sur 999999 <- 13 obs for salmee. Outlier or millionaires?
+	/* Question sur 999999 <- 13 obs for salmee. Want to confirm, outliers to be dropped?
 	
 	foreach var in valprie salmee salred salsee smic_h smic_m  /*INSERT ALL MONETARY VARIABLES*/{
 		cap noisily replace `var' = . if (`var' == 9999998 | `var' == 9999999 | `var' == 999999)
@@ -540,21 +519,11 @@ use Data/Clean/df3_master_harmonized, clear
 	gen post_macron_OT 		= 1 if (emphsc == 1 & post_macron == 1)
 	replace post_macron_OT 	= 0 if post_macron_OT == . 
 
-	* PEPA Bonus Eligibility
-	
-	/*replace valprie = 0 if valprie == . 
-	replace valprie_2015 = 0 if valprie_2015 == .
-	gen just_wage_2015 = salmee_2015 - valprie_2015 if prim ==1 
-	
-	gen elig_pepa = (just_wage_2015 < (smic_m * 3) & datdeb > date("01jan2019", "DMY"))
-	order elig_pepa*/
-
  	* Managers & Laborers (from CaCaJole)
 	
-	gen manager 	= 1 if 	(cse == 34 |cse == 35 | cse==37 | cse==38 | cse==46 | cse==48 )
-	replace manager = 0 if 	manager == . 
-	gen laborer 	= 1 if 	(cse == 62 | cse == 63 | cse == 65 | cse == 67 | cse == 68)
-	replace laborer = 0 if 	laborer == . 
+	gen optim 		= . 
+	replace optim  	= 1 if (cse == 34 |cse == 35 | cse==37 | cse==38 | cse==46 | cse==48) // manager 
+	replace optim 	= 0 if (cse == 62 | cse == 63 | cse == 65 | cse == 67 | cse == 68)	  // laborer 
 
 	* Domestic Border Workers (TREATED)
 	
@@ -694,26 +663,6 @@ save "Data/Clean/df4_master_final.dta", replace
 *********************************
 
 use Data/Clean/df4_master_final, clear 
-
-	/*foreach var in salmee valprie emphre {
-		
-		qui su `var', detail
-		local q1 = r(p25)  
-		local q3 = r(p75)  
-		
-		local iqr = `q3' - `q1'
-		
-		local lower = `q1' - 3 * `iqr' 		// I use 3 * the IQR here to be less strict - compensation data usually has a long right tail 
-		local upper = `q3' + 3 * `iqr'
-		
-		drop if (`var' < `lower' | `var' > `upper')
-	}
-	
-	IQR method relies on assumption that the data is symmetric. Here my data is not symmetric. 
-	
-	I am not sure how to remove outliers, determining the values past which obs are outliers seems inconsistent. 
-
-	*/ 
 	
 	
 *******************************
