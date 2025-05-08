@@ -1,6 +1,62 @@
 ********************
 ***** Old Code *****
 ********************
+	* ANNUAL GVA BY REGION (Attempmted IV - didn't work)
+	gen reg2016 = ""
+	replace reg2016 = "Île-de-France"                        if inlist(reg, 11)
+	replace reg2016 = "Grand Est"                            if inlist(reg, 21, 22, 41, 42)
+	replace reg2016 = "Normandie"                            if inlist(reg, 23, 25)
+	replace reg2016 = "Centre-Val de Loire"                  if inlist(reg, 24)
+	replace reg2016 = "Bourgogne-Franche-Comté"              if inlist(reg, 26, 43)
+	replace reg2016 = "Hauts-de-France"                      if inlist(reg, 31)
+	replace reg2016 = "Pays de la Loire"                     if inlist(reg, 52)
+	replace reg2016 = "Bretagne"                             if inlist(reg, 53)
+	replace reg2016 = "Nouvelle-Aquitaine"                   if inlist(reg, 54, 72, 74)
+	replace reg2016 = "Occitanie"                            if inlist(reg, 73, 91)
+	replace reg2016 = "Provence-Alpes-Côte d'Azur"           if inlist(reg, 93)
+	replace reg2016 = "Auvergne-Rhône-Alpes"                 if inlist(reg, 82, 83)
+	replace reg2016 = "Corse"                                if inlist(reg, 94)
+	
+	sort reg2016 naf4 annee 
+	merge m:1 reg2016 naf4 annee using "Data/GVA/annual_values.dta"
+	drop if _merge ==2 
+	drop _merge
+save "Data/Clean/df_wedges.dta", replace
+
+	* Quarterly Value added by sector (Attempmted IV - didn't work)
+	gen newnaf = ""
+	replace newnaf = "Agriculture"                        if inlist(nafg36, "A0")
+	replace newnaf = "Agro-food industries"               if inlist(nafg36, "B0")
+	replace newnaf = "Manufactured goods"                 if inlist(nafg36, "C1", "C2", "C3", "F1", "F2", "F3", "F4", "F5")
+	replace newnaf = "Capital goods"                      if inlist(nafg36, "C4", "E2", "E3", "F6")
+	replace newnaf = "Transport equipment"                if inlist(nafg36, "D0", "E1")
+	replace newnaf = "Energy, water, waste"               if inlist(nafg36, "G1", "G2")
+	replace newnaf = "Construction"                       if inlist(nafg36, "H0")
+	replace newnaf = "Distributive trade sector"          if inlist(nafg36, "J1", "J2", "J3")
+	replace newnaf = "Transport"                          if inlist(nafg36, "K0")
+	replace newnaf = "Financial services"                 if inlist(nafg36, "L0")
+	replace newnaf = "Real estate services"               if inlist(nafg36, "M0")
+	replace newnaf = "Information and communication"      if inlist(nafg36, "N1")
+	replace newnaf = "Business Services"                  if inlist(nafg36, "N2", "N3", "N4")
+	replace newnaf = "Accommodation and food service activities"    if inlist(nafg36, "P1")
+	replace newnaf = "Household services"                 if inlist(nafg36, "P2", "P3")
+	replace newnaf = "Mainly non-market services"         if inlist(nafg36, "Q1", "Q2")
+	replace newnaf = "Non-market services"                if inlist(nafg36, "R1", "R2")
+	
+	sort newnaf datdeb_q
+	merge m:1 newnaf datdeb_q using "Data/Quarterly_Branch_Account/GVA_q.dta"
+	drop if _merge ==2
+	drop _merge
+	merge m:1 newnaf datdeb_q using "Data/Quarterly_Branch_Account/production_q.dta"
+	drop if _merge ==2
+	drop _merge
+	
+	/* 
+		nafg36 data only goes to 2009. That's fine I only need until 2008. I provide the nafg36 codes to
+		be able to understand the reclassification. In the end 2822 observations were not matched 
+		these were observations with no reported nafg36 code.	
+	*/
+save "Data/Clean/df_wedges.dta", replace
 
 
 clear all
@@ -681,24 +737,41 @@ r(199);
 	
 	restore 
 	
+*************
+**# ID2 *****
+*************
+
+use Data/Clean/quick_test.dta, clear
 	
+	keep if in_tepa 
+	//keep if contra == 1
+
+*** Workers in small firms (<2 workers) vs. Independents ***
+
+	gen control 		= 1 if statutr == 1 & efen == 0
+	gen treatment 		= 1 if statutr != 1 & efen == 1 
+	gen post_treatment 	= post_tepa * treatment 
 	
-		*** Colonne (1) et (2) : regression pour l'ensemble des categories professionnelles
-xttab dumoct07 if echant_indpt==1  &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_indpt==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+	keep if control == 1 | treatment == 1
+	
+	gen triple_optim 		= treatment * optim * post_tepa	// 0 = laborer, 1 = manager 
+	gen triple_gender		= treatment * sexe * post_tepa	// 0 = femme, 1 = homme
+	gen triple_underworked	= treatment * underworked * post_tepa // 0 = underworked, 1 = not undeworked 
+	
+	global i_controls sexe married enfant salred salred_sq educ_degree age age_sq annees_etudes ancentr cat_naf10
+	
+*** Regressions ***
 
+	reghdfe wedge post_treatment treatment $i_controls $c_controls [pweight=extri], absorb(indiv_num datdeb) cluster(indiv_num) // 
+	
+	reghdfe wedge triple_optim optim post_treatment treatment post_tepa  $i_controls $c_controls [pweight=extri], absorb(datdeb indiv_num) cluster(indiv_num) //
+	
+	* Y = |Wedge|
+	
+	reghdfe abs_wedge post_treatment treatment $i_controls $c_controls [pweight=extri], absorb(datdeb indiv_num) cluster(indiv_num) // 
 
-*** Colonne (3) et (4) : regression pour l'ensemble des categories professionnelles en Log
-xi: xtreg lempnbh dum_treat_sal_1  dummy  if echant_indpt==1  & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
-xi: xtreg lempnbh dum_treat_sal_1 treat_et_round  dummy round if echant_indpt==1   & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" [weight=extrim], fe robust cluster(num_indiv) 
-
-*** Colonne 5) et (6) : regression pour l'artisanat
-xttab dumoct07 if echant_art==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_art==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-
-*** Colonne (7) et (8) : regression pour le commerce
-xttab dumoct07 if echant_com==1 &  treatment!=1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
-xttab dumoct07 if echant_com==1 &  treatment==1 & empnbh6>3 & exclu0!=1 & exclu1!=1 & empnbh<dur_trav  & nafg16!="EA" & nafg16!="ER" & nafg16!="EQ" 
+	reghdfe abs_wedge triple_optim optim post_treatment treatment $i_controls $c_controls [pweight=extri], absorb(datdeb indiv_num) cluster(indiv_num) // 
+	
 
 
 

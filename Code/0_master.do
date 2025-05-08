@@ -3,22 +3,25 @@
 ********* MASTER.DO FILE *********  
 **********************************
 **********************************
-
+clear all 
 ***** PART 0 - SET THE WORKING DIRECTORY *****
 
-clear all 
-
-global path /*"Insert filepath to where .zip was downloaded"*/ "/Users/glpou/Documents/SCIENCESPO/M2/S4/Thesis/1.Package/EEC_03_20"
+global path /*"Insert filepath to where .zip was downloaded"*/
 
 cd "$path"
 
-***** PART I - CLEANING AND DATA PREP *****
+***** PART I - PREPARING THE MERGE DATA *****
 
-do "Code/Cleaning.do" 
+do "Code/1_merge_prep.do" 
 
-***** PART II - DESCRIPTIVES *****
+***** PART II - PREPARING THE ANALYSIS DATA *****
 
-***** PART III - ANALYSIS *****
+do "Code/2_data_prep.do" 
 
+***** PART III - DESCRIPTIVE ANALYSIS *****
 
+do "Code/3_descriptive_analysis.do" 
 
+***** PART IV - TEPA ANALYSIS *****
+
+do "Code/4_TEPA_analysis.do"
