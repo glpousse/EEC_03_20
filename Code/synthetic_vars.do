@@ -34,17 +34,17 @@ lab values nb_salarie newlab
 	
 	New individuals join the panel every month, while others exit. If I successfully define cohorts 
 	grouping "new-joiners" by their common characteristics, then I can compute the average wage 
-	for individuals	of that cohort in a given month, and use these values replacements for missing values.
-	I do not use the replacement values if they are lower than an already reported wage: this 
-	assumes no individuals see their wages decrease as their employmnt span increases. A safe 
-	assumption. 
+	for individuals	of that cohort in a given month. Then I can normalise the evolution of the wage for 
+	in each cohort, across time and apply this trend to the existing wage values. 
 	
 	E.g. 
 	Persons A, B and C have similar characteristics (age, job industry, education): they fall into
 	the same cohort. They all report wages in their first interrogation. A enters in Jan 2007, B enters in Feb 
 	2007, and C enters in March 2007. Assuming the cohort requirements are specific enough, I can collapse 
-	these wages into the wage of any individual of that cohort. Now, to add precision, consider A, B 
-	and C to be waves (or vectors) or "new-joiners". This is our case in the LFS.
+	these wages into the wage of any individual of that cohort. Now, I study the evolution of that wage and 
+	normalise it. Then, I apply this trend to the pre-exisitng values of wage for individuals belonging to the
+	same cohort.
+	to add precision, consider A, B and C to be waves (or vectors) or "new-joiners". This is our case in the LFS.
 */
 
 use Data/Clean/df_wedges, clear 
