@@ -26,4 +26,8 @@ I'm still taking my first steps, thanks for bearing with me!
 
 - SMIC_net : https://www.insee.fr/fr/statistiques/serie/000879878#Telechargement 
 
+- SMIC_brut : https://www.insee.fr/fr/statistiques/1375188
+
+
+
 

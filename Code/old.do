@@ -1,6 +1,106 @@
 ********************
 ***** Old Code *****
 ********************
+
+
+
+	* Syth w 
+	
+// 	* Trying with one before looping
+//	
+// 	* Imputed Wage Growth: I apply the percentage wage growth of the imputed wage, on the actual wage
+// 	* Forrwards (compounding) or backwards (discounting) depedning on whether it is the firts_wage or last_wage 
+// 	bysort indiv_num: gen wage_growth = (salred_lowess - salred_lowess[_n-1])/salred_lowess[_n-1]
+// 	bysort indiv_num: replace wsalred_lowess = wsalred_lowess[_n-1] * (1+wage_growth) if (du1 == 1 & wsalred_lowess ==.) 
+// 	gsort indiv_num -obs_number
+// 	bysort indiv_num: replace wsalred_lowess = wsalred_lowess[_n-1] / (1+wage_growth) if (du1 == 1 & wsalred_lowess ==.) 
+//		
+
+
+
+*********************************
+**# WEDGE - OT RELATIONSHIP ***** 		
+*********************************
+	 	
+/*
+	ENDOGENEITY concern between OT and wedge, the below regressions cannot be interpretted causally. 
+	Potential Instrumnts which have not proven valid: 
+	- Quarterly GVA by sector <-- also potentially endogeneous, duh
+	- Quarterly output by sector  <-- also potentially endogeneous, duh
+		- Alternatigve: lag it or leave-one-out? 
+	
+	Next attempts:
+	- export demand 
+	- sector level prices (data exists?)
+*/
+
+	* Altenratively, scatter plots? 
+
+use Data/Clean/p_df_wedges, clear 
+
+	scatter emphre wedge if emphre < 80 & emphre > 0 || lfit emphre wedge if emphre < 80 & emphre > 0
+	
+	scatter emphre abs_wedge if emphre < 80 & emphre > 0 || lfit emphre abs_wedge if emphre < 80 & emphre > 0
+	
+*** CDI + CDD ***
+ 
+	*** In TEPA ***  
+	* Absolute
+	eststo full1: reghdfe abs_wedge emphre if in_tepa [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	* Raw
+	eststo full2: reghdfe wedge emphre if in_tepa [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	
+	*** Pre-2007 *** 
+	* Absolute 
+	eststo full3: reghdfe abs_wedge emphre if annee <= 2007 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	* Raw
+	eststo full4: reghdfe wedge emphre if annee <= 2007 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	
+*** CDI ***
+	* Absolute
+	eststo perm1: reghdfe abs_wedge emphre if in_tepa & contra == 1 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	* Raw
+	eststo perm2: reghdfe wedge emphre if in_tepa & contra == 1 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	
+	*** Pre-2007 *** 
+	* Absolute 
+	eststo perm3: reghdfe abs_wedge emphre if annee <= 2007 & contra == 1 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	* Raw
+	eststo perm4: reghdfe wedge emphre if annee <= 2007 & contra == 1 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	
+*** CDD ***
+	* Absolute
+	eststo fixed1: reghdfe abs_wedge emphre if in_tepa & contra ==2 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	* Raw
+	eststo fixed2: reghdfe wedge emphre if in_tepa & contra ==2 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // *** 
+	
+	*** Pre-2007 *** 
+	* Absolute 
+	eststo fixed3: reghdfe abs_wedge emphre if annee <= 2007 & contra ==2 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	* Raw
+	eststo fixed4: reghdfe wedge emphre if annee <= 2007 & contra ==2 [pweight = extri], absorb(indiv_num datdeb) cluster(indiv_num) // ***
+	
+
+*** Making the Latec Table ***
+	
+	esttab full1 full2 full3 full4 using "Output/Tables/OT_Wedge_Relationship/panel_full.tex", ar2 n nocons se label fragment replace varlabels(emphre "Overtime Hours" abs_wedge "Absolute Mismatch" wedge "Raw Mismatch")
+	esttab fixed1 fixed2 fixed3 fixed4 using "Output/Tables/OT_Wedge_Relationship/panel_fixed.tex", ar2 n nocons se label fragment replace varlabels(emphre "Overtime Hours" abs_wedge "Absolute Mismatch" wedge "Raw Mismatch")
+	esttab perm1 perm2 perm3 perm4 using "Output/Tables/OT_Wedge_Relationship/panel_perm.tex", ar2 n nocons se label fragment replace varlabels(emphre "Overtime Hours" abs_wedge "Absolute Mismatch" wedge "Raw Mismatch")
+
+
+	esttab model1 model2 model3 model4 using "Output/Tables/OT_Wedge_Relationship.tex", ///
+											  mtitles("Absolute Wedge" "Raw Wedge" "Absolute Wedge" "Raw Wedge") ///choose the column names 
+											  varlabels(emphre "Overtime Hours" ///
+											  abs_wedge "Absolute Mismatch" ///
+											  wedge "Raw Mismatch") ///
+											   /// choose the stats you want 
+											  note("Note: Blabla. Standard errors are in parentheses") /// write a note
+											  title("Relationship Between Overtime Hours and the Labor Supply Wedge") ///
+											  replace 
+
+
+
+	
 	* ANNUAL GVA BY REGION (Attempmted IV - didn't work)
 	gen reg2016 = ""
 	replace reg2016 = "Île-de-France"                        if inlist(reg, 11)

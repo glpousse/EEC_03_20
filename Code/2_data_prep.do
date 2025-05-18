@@ -45,30 +45,13 @@ forvalues i = 2003/2010{
 		rename var1 datdeb
 		order indiv annee mois datdeb 
 	
-	* CPI, UE, merge
+	* CPI merge 
 		cap destring annee mois trim, replace
 		sort annee mois trim
 		merge m:1 annee mois using "Data/Inflation/CPI_base_2015.dta"
 		drop if _merge ==2
 		drop _merge 
 		drop if annee != `i'
-		sort annee trim
-		merge m:1 annee trim using "Data/Unemployment/ueq_FR.dta" // Finding data by departement? 
-		drop if _merge ==2
-		drop _merge
-		drop if annee != `i'
-		sort annee mois
-		merge m:1 annee mois using "Data/SMIC/smic_FR.dta"
-		drop if _merge ==2
-		drop _merge 
-		drop if annee != `i'
-		sort annee mois 
- 		merge m:1 annee mois using "Data/SMIC/smic_net.dta"
-		drop if _merge ==2
- 		drop _merge 
-		drop if annee != `i'
-		lab var smic_h "SMIC Horaire"
-		lab var smic_m "SMIC Mensuel"
 
 	* Stringing everything to make append possible
 		quietly tostring *, replace 
@@ -202,7 +185,7 @@ use Data/Clean/df1_master_notrim, clear
 	gen du_hhc			= (hhc <= 70 & hhc>=35)						// Weekly H on average
 	gen du_empnbh 		= (empnbh <= 70 & empnbh>=35)				// H during reference week 
 	gen du_nbhp 		= (nbhp <= 70 & nbhp>=35)					// H agreed on 
- 	gen min_smic_net	= (salred >= smic_m_net | smic_m_net ==.)	// for now, the smic only starts in 2005
+ 	gen min_smic		= (salred >= smic_m_net)					// Makes minimum wage (NET)
 	gen no_interruption = (empaff == 4 | empaff ==5 ) 				// uninterrupted workschedule 
 	gen mod_agree 		= (redic == 1) 								// modulation agreemnt
 	gen CDI		 		= (contra == 1) 							// holds a CDI contract
@@ -257,7 +240,6 @@ use Data/Clean/df2_master_trimmed, clear
 	label var age_cohort "Grouped Age Cohort"
 	label define age_cohort_lbl 1 "18–24" 2 "25–34" 3 "35–44" 4 "45–54" 5 "55–64" 6 "65+"
 	label values age_cohort age_cohort_lbl
-
 	
 	* EDUCATION DEGREE 
 	gen educ_degree 		= . 
@@ -266,13 +248,32 @@ use Data/Clean/df2_master_trimmed, clear
 	replace educ_degree 	= 3 if nivp <= 20 
 	label define educ_lbl 1 "No Tertiary Education" 2 "Vocational Training" 3 "Higher Education"
 	label values educ_degree educ_lbl
-
+	
 	* ETRANGER  
 	gen etranger = .
 	forvalues i = 1/3{
 		replace etranger = `i' if nfr == `i'
 	}
 	lab var etranger "Nationalité française ou étrangère, redressée"
+	
+	* CAT: JOB TENURE 
+	gen cat_tenure = . 
+	replace cat_tenure = 1 if ancentr < 5
+	replace cat_tenure = 2 if ancentr < 11 & ancentr > 4
+	replace cat_tenure = 3 if ancentr < 21  & ancentr > 10
+	replace cat_tenure = 4 if ancentr < 31 & ancentr > 20
+	replace cat_tenure = 5 if ancentr > 30
+	lab def tenure_lbl 1 "0-4" 2 "5-10" 3 "11-20" 4 "21-30" 5 "30+" 
+	lab values cat_tenure tenure_lbl 
+	
+	* CAT: # OF EMPLOYEES (SMALLER CAT)
+	gen nb_salarie = . 
+	replace nb_salarie = 1 if nbsala < 5
+	replace nb_salarie = 2 if nbsala >=5 & nbsala < 7 
+	replace nb_salarie = 3 if nbsala ==7 
+	replace nb_salarie = 4 if nbsala > 7  
+	lab def newlab 1 "0-19" 2 "20-199" 3 "200-499" 4 "500+"
+	lab values nb_salarie newlab 
 	
 	* CAT: WORK HOURS
 	foreach var in empnbh hhc nbhp {
@@ -357,19 +358,6 @@ use Data/Clean/df2_master_trimmed, clear
 	lab var urban "Situé en Zone Urbaine"
 	
 save Data/Clean/df3_master_harmonized, replace 
-
-****************************************
-**# INFLATOR/ DEFLATOR - BASE 2015 *****
-****************************************
-
-use Data/Clean/df3_master_harmonized, clear
-
-	* Question sur 999999 <- 13 obs for salmee. Want to confirm, outliers to be dropped?
-	
-	foreach var in salmee salred salsee smic_h smic_m  /*INSERT ALL MONETARY VARIABLES*/{
-		cap noisily replace `var' = . if (`var' == 9999998 | `var' == 9999999 | `var' == 999999)
-		gen `var'_2015 = `var' * (100/cpi)
-	}
 
 *****************
 **# DUMMIES *****
@@ -470,15 +458,14 @@ save Data/Clean/df4_master_final.dta, replace
 
 use Data/Clean/df4_master_final, clear
 	
-	* HPLUS & SALRED assumptions 
-	foreach var in hplus {
-		bysort indiv_num (datdeb): replace `var' = `var'[_n-1] if missing(`var') & !missing(`var'[_n-1])
-		bysort indiv_num (datdeb): replace `var' = `var'[_n+1] if missing(`var') & !missing(`var'[_n+1])
-	}
-
-	bysort indiv_num (datdeb): egen mean_wage = mean(salred)
-	replace salred = mean_wage 
-	drop mean_wage 
+	* HPLUS ASSUMPTION 1 
+	gen hplus1 = hplus
+	sort indiv_num datdeb
+	bysort indiv_num: replace hplus1 = hplus1[_n-1] if missing(hplus1) & !missing(hplus1[_n-1])
+	bysort indiv_num: replace hplus1 = hplus1[_n+1] if missing(hplus1) & !missing(hplus1[_n+1])
+	
+	* SALRED ASSUMPTION 1
+	bysort indiv_num (datdeb): egen salred1 = mean(salred)
 
 	* WORKING VARS 
 	gen wedge 					= hplus - empnbh	
@@ -499,11 +486,14 @@ use Data/Clean/df4_master_final, clear
 	label define worker_type_lbl 1 "Underworked" 2 "No Wedge" 3 "Overworked"  
 	label values worker_type worker_type_lbl 
 	
-	gen weekly_salred     	= salred/ 4.33
-	gen hourly_salred 	  	= weekly_salred / empnbh 
-	gen log_salred 	      	= log(salred)
-	gen log_hourly_salred  	= log(hourly_salred)
-	gen salred_sq = salred^2 
+	foreach var in salred salred1 wsalred_CMA_2015 wsalred_LMA_2015 wsalred_lowess {
+		cap drop weekly_`var' hourly_`var' log_`var' log_hourly_`var' `var'_sq
+		gen weekly_`var'     	= `var'/ 4.33
+		gen hourly_`var' 	  	= weekly_`var' / empnbh 
+		gen log_`var' 	      	= log(`var')
+		gen log_hourly_`var'  	= log(hourly_`var')
+		gen `var'_sq = `var'^2 
+	}
 	
 	gen hourly_salmee 	  	= salmee/ (4.33*empnbh)
 	gen log_hourly_salmee 	= log(hourly_salmee)
@@ -525,12 +515,18 @@ use Data/Clean/df4_master_final, clear
 	encode naf10, gen(cat_naf10)
 	encode nafg16, gen(cat_nafg16)
 	
-save Data/Clean/p_df_wedges.dta, replace
+save Data/Clean/df_wedges.dta, replace
 
 ****************************
 **# MERGING EXTRA DATA ***** 
 ****************************
-use Data/Clean/p_df_wedges, clear
+
+use Data/Clean/df_wedges, clear
+	
+	* NATIONAL UE
+	merge m:1 annee trim using "Data/Unemployment/ueq_FR.dta" 
+	drop if _merge ==2
+	drop _merge
 	
 	* LOCAL UE
 	cap drop _merge
@@ -538,14 +534,17 @@ use Data/Clean/p_df_wedges, clear
 	merge m:1 annee trim dep using "Data/Unemployment/ueq_localise.dta" 
 	drop if _merge ==2
 	drop _merge 
-save "Data/Clean/p_df_wedges.dta", replace
+save "Data/Clean/df_wedges.dta", replace
 
-	* NET SMIC 
+	* SMIC NET & BRUT  
 	sort annee mois
-	merge m:1 annee mois using "Data/SMIC/smic_net.dta"
+	merge m:1 annee mois using "Data/SMIC/smic_FR.dta"
 	drop if _merge ==2
 	drop _merge
-save "Data/Clean/p_df_wedges.dta", replace
+	lab var smic_h_brut "SMIC Horaire Brut"
+	lab var smic_m_brut "SMIC Mensuel Brut"
+	lab var smic_m_net "SMIC Mensuel Net"
+save "Data/Clean/df_wedges.dta", replace
 
 	* BORDER COUNTRY QUARTERLY ECONOMIC SITUATION
 	order border_country datdeb_m 
@@ -558,4 +557,25 @@ save "Data/Clean/p_df_wedges.dta", replace
 	merge m:1 border_country datdeb_q using "Data/Border_Country_Controls/OECD_GS_GDP_Clean.dta"
 	drop if _merge == 2 
 	drop _merge 
-save "Data/Clean/p_df_wedges.dta", replace
+save "Data/Clean/df_wedges.dta", replace
+
+******************************************
+**# FINAL DUMMIES FOR IDENTIFICATION ***** 
+******************************************
+
+
+
+****************************************
+**# INFLATOR/ DEFLATOR - BASE 2015 ***** POTENSH SLAP AT END OF SYNTH VARS
+****************************************
+
+use Data/Clean/* insert final dataset*/, clear
+
+	* Question sur 999999 <- 13 obs for salmee. Want to confirm, outliers to be dropped?
+	
+	foreach var in salmee salred salred1 wsalred_CMA wsalred_LMA wsalred_lowess salsee smic_h smic_m  {
+		cap noisily replace `var' = . if (`var' == 9999998 | `var' == 9999999 | `var' == 999999)
+		cap drop `var'_2015
+		gen `var'_2015 = `var' * (100/cpi)
+	}
+	

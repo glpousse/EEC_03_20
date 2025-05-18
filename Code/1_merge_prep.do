@@ -8,9 +8,10 @@
 **# SMIC NET *****
 ******************
 
-* No data for before July 2025, the data has been taken from INSEE. Where to find data before? 
+	* No data on NET SMIC (without CSG CSDS) before July 2005, the data has been taken from INSEE. 
+	* I impute the NET value before 2005 by using the NET/ RAW ratio from 2005 onwards.
 
-// import excel using "smic_data.xlsx", firstrow clear
+	*NET
 import delimited "Data/SMIC/SMIC_net.csv", clear 
 	drop v3
 	drop if _n < 5
@@ -22,6 +23,80 @@ import delimited "Data/SMIC/SMIC_net.csv", clear
 	destring *, replace
 	drop if _n > 186 
 save "Data/SMIC/smic_net.dta", replace // Only starts July 2005!!!
+
+	* BRUT 
+import excel "Data/SMIC/SMIC_brut.xlsx", clear
+	split C, parse("/")
+	rename C1 mois 
+	rename C3 annee 
+	rename D smic_h_brut
+	rename E smic_m_brut_151
+	rename F smic_m_brut_169
+	drop A B C G H C2
+	drop if _n < 4
+	foreach var in smic_h_brut smic_m_brut_151 smic_m_brut_169 {
+		replace `var' = "" if `var' == "///"
+	}
+	destring *, replace
+	drop if annee < 2003 | annee > 2020 
+	replace smic_m_brut_151 = smic_m_brut_169 * 151.67 / 169 if smic_m_brut_151 == .	
+	drop smic_m_brut_169
+save "Data/SMIC/smic_brut.dta", replace 
+
+use Data/SMIC/smic_net, clear
+	sort annee mois	
+	merge 1:1 annee mois using "Data/SMIC/smic_brut.dta"
+	drop _merge 
+	foreach var in smic_m_brut_151 smic_h_brut {
+		replace `var' = `var'[_n-1] if `var' == . 
+	}
+	order annee mois
+	
+	* Net / Raw ratio
+	gen ratio = smic_m_net / smic_m_brut_151 
+	su ratio // mean ~ 0.7844.
+	* Hence, for smic_brut values before 2005, I assume smic_net = smic_brut * 0.7844. 
+	
+	gsort -annee mois
+	set obs `=_N + 28'
+	replace annee = 2003 if _n > 188 & _n< 200
+	replace annee = 2004 if _n > 199 & _n < 211
+	replace annee = 2005 if _n > 210 & _n < 217
+	
+	sort annee mois
+	foreach var in smic_m_brut_151 smic_h_brut {
+		replace `var' = `var'[_n-1] if `var' == . 
+	}
+	
+	replace mois = _n - 30 if inrange(_n, 31, 36)
+	local i = 1
+	forvalues obs = 14/24 {
+		if `i' == 7 {
+			local i = 8
+    }
+    replace mois = `i' in `obs'
+    local ++i
+}
+	local i = 1
+	forvalues obs = 2/12 {
+		if `i' == 7 {
+			local i = 8
+    }
+    replace mois = `i' in `obs'
+    local ++i
+}	
+sort annee mois
+	
+	replace smic_m_net = 957.74 if smic_m_net == . & annee == 2005
+	replace smic_m_net = smic_m_brut_151 * 0.7844 if smic_m_net ==.
+	
+	rename smic_m_brut_151 smic_m_brut 
+	drop ratio
+save "Data/SMIC/smic_FR.dta", replace
+
+******
+*NEED TO MAKE SURE THE MERGING SMIC AND VAR NAMES LINES UP THROUGH OUT. 
+******
 
 *****************************************************
 **# BORDER COUNTRY QUARTERLY ECONOMIC SITUATION *****
