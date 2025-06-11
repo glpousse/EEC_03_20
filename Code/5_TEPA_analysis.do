@@ -37,9 +37,9 @@ drop if naf4 == "ES"
 	keep if in_tepa
 	
 	*DiD dummies
-	gen treatment 	= (dom_bel == 1 | dom_ger == 1 | dom_swz == 1 | dom_lux == 1) & france == 1
-	gen control 	= (trans_bel == 1 | trans_ger == 1| trans_swz == 1 | trans_lux == 1  )
-	gen post_treatment = treatment * post_tepa 
+	gen treatment 		= (dom_bel == 1 | dom_ger == 1 | dom_swz == 1 | dom_lux == 1) & france == 1
+	gen control 		= (trans_bel == 1 | trans_ger == 1| trans_swz == 1 | trans_lux == 1  )
+	gen post_treatment 	= treatment * post_tepa 
 	
 	* TD dummies 
 	gen triple_optim = treatment * optim * post_tepa

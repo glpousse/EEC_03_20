@@ -52,6 +52,13 @@ forvalues i = 2003/2010{
 		drop if _merge ==2
 		drop _merge 
 		drop if annee != `i'
+	
+	* SMIC Merge 
+		sort annee mois
+		merge m:1 annee mois using "Data/SMIC/smic_FR.dta"
+		drop if _merge ==2
+		drop _merge
+		drop if annee != `i'
 
 	* Stringing everything to make append possible
 		quietly tostring *, replace 
@@ -193,14 +200,6 @@ use Data/Clean/df1_master_notrim, clear
 	gen full_time 		= (tppred == 1)		 						// full-time workers 
 	gen part_time 		= (tppred ==2)								// part-time workers
 	
-	// SOmething with respect to CHPUB? 
-	/*1 - Etat
-2 - Collectivités locales, HLM
-3 - Hôpitaux publics
-4 - Particulier
-5 - Entreprise publique (La Poste, EDF-GDF, etc.)
-6 - Entreprise privée, association
- - Ensemble */
 	
 save Data/Clean/df2_master_trimmed.dta, replace  
 
@@ -466,6 +465,25 @@ use Data/Clean/df4_master_final, clear
 	
 	* SALRED ASSUMPTION 1
 	bysort indiv_num (datdeb): egen salred1 = mean(salred)
+	
+	* CAT: NET INCOME BRACKET (made from salred1)
+	gen cat_salred1 = .
+	replace cat_salred1 = 1  if salred1 < 500
+	replace cat_salred1 = 2  if salred1 >= 500  & salred1 < 1000
+	replace cat_salred1 = 3  if salred1 >= 1000 & salred1 < 1250
+	replace cat_salred1 = 4  if salred1 >= 1250 & salred1 < 1500
+	replace cat_salred1 = 5  if salred1 >= 1500 & salred1 < 2000
+	replace cat_salred1 = 6  if salred1 >= 2000 & salred1 < 2500
+	replace cat_salred1 = 7  if salred1 >= 2500 & salred1 < 3000
+	replace cat_salred1 = 8  if salred1 >= 3000 & salred1 < 5000 
+	replace cat_salred1 = 9  if salred1 >= 5000 & salred1 < 8000
+	replace cat_salred1 = 10 if salred1 >= 8000
+	replace cat_salred1 = 98 if salred1 == 98
+	replace cat_salred1 = 99 if salred1 == 99
+	label define cat_salred1_labels 	1 "500-" 2 "500-1000" 3 "1000-1250" 4 "1250-1500" 5 "1500-2000" 6 "2000-2500" ///
+								7 "2500-3000" 8 "3000-5000" 9 "5000-8000" 10 "8000+" 98 "Refus" 99 "Ne sait pas"
+	label values cat_salred1 cat_salred1_labels
+	label variable cat_salred1 "Tranche de salaire de l'emploi principal (1)"
 
 	* WORKING VARS 
 	gen wedge 					= hplus - empnbh	
@@ -486,15 +504,6 @@ use Data/Clean/df4_master_final, clear
 	label define worker_type_lbl 1 "Underworked" 2 "No Wedge" 3 "Overworked"  
 	label values worker_type worker_type_lbl 
 	
-	foreach var in salred salred1 wsalred_CMA_2015 wsalred_LMA_2015 wsalred_lowess {
-		cap drop weekly_`var' hourly_`var' log_`var' log_hourly_`var' `var'_sq
-		gen weekly_`var'     	= `var'/ 4.33
-		gen hourly_`var' 	  	= weekly_`var' / empnbh 
-		gen log_`var' 	      	= log(`var')
-		gen log_hourly_`var'  	= log(hourly_`var')
-		gen `var'_sq = `var'^2 
-	}
-	
 	gen hourly_salmee 	  	= salmee/ (4.33*empnbh)
 	gen log_hourly_salmee 	= log(hourly_salmee)
 	
@@ -512,8 +521,9 @@ use Data/Clean/df4_master_final, clear
 	gen child 				= em1 
 	
 	* Encoding cateogoricals
-	encode naf10, gen(cat_naf10)
-	encode nafg16, gen(cat_nafg16)
+	encode naf4, 	gen(cat_naf4)
+	encode naf10, 	gen(cat_naf10)
+	encode nafg16, 	gen(cat_nafg16)
 	
 save Data/Clean/df_wedges.dta, replace
 
@@ -534,16 +544,6 @@ use Data/Clean/df_wedges, clear
 	merge m:1 annee trim dep using "Data/Unemployment/ueq_localise.dta" 
 	drop if _merge ==2
 	drop _merge 
-save "Data/Clean/df_wedges.dta", replace
-
-	* SMIC NET & BRUT  
-	sort annee mois
-	merge m:1 annee mois using "Data/SMIC/smic_FR.dta"
-	drop if _merge ==2
-	drop _merge
-	lab var smic_h_brut "SMIC Horaire Brut"
-	lab var smic_m_brut "SMIC Mensuel Brut"
-	lab var smic_m_net "SMIC Mensuel Net"
 save "Data/Clean/df_wedges.dta", replace
 
 	* BORDER COUNTRY QUARTERLY ECONOMIC SITUATION

@@ -2,6 +2,32 @@
 ***** Old Code *****
 ********************
 
+**********************************
+**# Wedge by Education & Age *****
+**********************************
+
+use Data/Clean/p_df_wedges, clear
+
+	gen period = . 
+	replace period = 1 if datdeb < tepa_date
+	replace period = 2 if datdeb >= tepa_date & datdeb < abrog_date
+	replace period = 3 if datdeb >= abrog_date & datdeb <macron_date
+
+	graph bar wedge, over(period, relabel(1 "Pre-TEPA" 2 "TEPA" 3 "Post-TEPA")) over(agd) 
+
+
+	gen pos = . 
+	replace pos = 1 if (wedge >0 & wedge !=.)
+	replace pos = 0 if (wedge <0 & wedge !=.)
+	count if wedge !=. // 306,028
+	
+	collapse (count) wedge [pweight=extri], by(pos nivp)
+	replace wedge = (wedge / 306028) *100
+	reshape wide wedge, i(nivp) j(pos)
+	
+	graph bar wedge, over(pos) over(nivp)
+	
+
 
 
 	* Syth w 

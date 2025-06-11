@@ -10,94 +10,132 @@ cap ssc install coefplot
 ************************
 **# Response Rates *****
 ************************
-
-use Data/Clean/df_wedges, clear 
-	keep if datdeb < tepa_date
-	count // 210,261
-	count if hplus !=. // 36,252 / 210,261 = 17.24%
-	count if empnbh !=. // 210,112 / 210,261 = 99.93%
-use Data/Clean/df_wedges, clear 
-	keep if in_tepa 
-	count // 43,526
-	count if hplus !=. // 7,560 / 43,526 = 17.37%
-	count if empnbh !=. // 43,509 / 43,526 = 99.96%
-
-use Data/Clean/p_df_wedges, clear
-	keep if datdeb < tepa_date
-	count // 210,261
-	count if hplus !=. // 61,377 / 210,261 = 29.21%
-	count if empnbh !=. // 210,112 / 210,261 = 99.93%
-use Data/Clean/p_df_wedges, clear
-	keep if in_tepa 
-	count // 43,526
-	count if hplus !=. // 14,624 / 43,526 = 33.60%
-	count if empnbh !=. //  43,509 / 43,526 = 99.96%
 	
-use Data/Clean/df_wedges, clear  
+	* Table for Summarizing non-responses 
+use Data/Clean/df_wedges, clear 
+	keep if in_tepa 
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	codebook wedge 				// Missing .: 36,782/44,429 --> 82.76
+	codebook hplus 				// Missing .: 36,782/44,429 --> 82.76
+	codebook empnbh 			// Missing .: 0/44,429		--> 0 
+	codebook salred				// Missing .: 30,841/44,429	--> 69.43
+
+use Data/Clean/df_wedges, clear 
 	keep if datdeb < tepa_date 
-	collapse (mean) hplus, by(indiv_num)
-	count // 70,810
-	count if hplus !=. // 20,885 / 70,810 = 29.49%
-
-use Data/Clean/df_wedges, clear  
-	keep if in_tepa  
-	collapse (mean) hplus, by(indiv_num)
-	count // 9,643
-	count if hplus !=. // 3,510 / 9,643 = 36.40%
-
-	* At least twice
-// 	gen du = (hplus !=.)
-// 	bysort indiv_num: egen count_du = total(du)
-// 	gen dum = (count_du > 1)
-// 	collapse (mean) hplus dum, by(indiv_num)
-// 	count // 70,810
-// 	count if dum ==1 // 8,305 / 70,810 = 
-
-
-
-
-
-
-
-****************************************************
-**# WEDGE/ HPLUS/ EMPNBH/ SALRED HETEROGENEITY *****
-****************************************************
-
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	codebook wedge 				// Missing .: 153,737/184,480 --> 83.37
+	codebook hplus 				// Missing .: 153,737/184,480 --> 83.37
+	codebook empnbh 			// Missing .: 1/184,480		  --> 0
+	codebook salred				// Missing .: 126,591/184,480 --> 68.62
+	
 use Data/Clean/df_wedges, clear 
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	codebook wedge 				// Missing .: 290,156/342,604 --> 
+	codebook hplus 				// Missing .: 290,156/342,604 -->
+	codebook empnbh 			// Missing .: 2/342,604		  -->
+	codebook salred				// Missing .: 234,952/342,604 -->
+	
+	* Table summarizing response rates for Hplus 
+use Data/Clean/df_wedges, clear 
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	tab rgi if hplus !=. 
+
+	
+************************
+**# STATS FOR DEFENSE *****
+************************
 use Data/Clean/SYNTH_2, clear 
-keep if in_tepa 
-
-* MULTNOMIAL LOGIT ON OVERWORK/ UNDERWORK DUMMIES
-
-***** Aggregate 2003-2007 *****
+	keep if datdeb < tepa_date 
+	keep if wedge !=.
 	
-	global controls sexe age_group educ_degree married child cat_naf4 cat_tenure
+	tabstat wedge, stat(mean) by(empnbh_cat)
+	
+	bysort empnbh_cat: 
+	
+	tabstat sexe age annees_etudes child nbenfc married ancentr empnbh emphre, by(tplus) stat(mean sd) column(statistics)
+	
 
-    global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.cat_naf4 i.cat_tenure 
-	
-// 	xtset indiv_num datdeb 
-// 	xtlogit tplus $i_controls, vce(cluster indiv_num)
 
-    reghdfe salred $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
 	
-	* DO THIS FOR HPLUS TO JUSTIFY THE COHORT DEFINITIONS
 	
+************************
+**# STYLIZED FACTS *****
+************************
+
+use Data/Clean/SYNTH_2, clear 
+keep if datdeb < tepa_date 
+
+***** FACT 1 ***** 
+
+	* The table
+	tabstat wedge hplus empnbh,by(tplus) stat(mean sd n)
+	//    tplus |     wedge     hplus    empnbh
+	// ---------+------------------------------
+	//        0 | -6.904109  36.04195  42.94606
+	//          |   7.48135  8.909774  7.815418
+	//          |      4527      4527      4527
+	// ---------+------------------------------
+	//        1 |  7.926261  43.61471  37.96623
+	//          |  6.629422  6.077461  8.190416
+	//          |     20315     20315    149318
+	// ---------+------------------------------
+	//    Total |  5.223697  42.23471  38.11276
+	//          |  8.883424  7.294823  8.222782
+	//          |     24842     24842    153845
+	// ----------------------------------------
+
+	dis "% of overworked =" (4527 / 24842) * 100
+	dis "% of underworked =" (20315 / 24842) * 100
+
+* The Mismatch CDF 
+	cumul wedge, gen(cdf_wedge)
+	twoway line cdf_wedge wedge, sort lwidth(thin) lcolor(blue) ///
+		ytitle("Empirical Cumulative Probability") ///
+		xtitle("Work Hours Mismatch") ///
+		xline(0, lcolor(red) lpattern(dash))
+	graph export "Output/Figures/Stylized_Facts/0_CDF.png", as(png) replace 
+	
+***** FACT 2 ***** 
+	global controls sexe age_group educ_degree married child  
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child   
+	
+* MISMATCH 
+	reghdfe wedge $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
     estimates store base_model
-
+	
     foreach var in $controls {
         estimates restore base_model
         margins `var', post
         estimates store m_`var'
     }
 	
-	* Across Demographics
-
+	* Across Demographics (FACT 1)
     coefplot 	(m_sexe)(m_age_group) ///
-				(m_educ_degree)(m_married)(m_child)(m_cat_naf4)(m_cat_tenure), ///
+				(m_educ_degree)(m_married)(m_child), ///
           horizontal ///
+		  xtitle("Adjusted Work Hours Mismatch") ///
           ciopts(recast(rcap) lcolor(gs10)) ///
           mcolor(blue) msymbol(circle) ///
-          title("Average Adjusted Wedge by Demographic Group (2003–2007") xtitle("Adjusted Wedge") ///
           nolabel legend(off) ///
           coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
 						1.age_group = "18 - 24" ///
@@ -107,25 +145,142 @@ keep if in_tepa
 						2.educ_degree = "Vocational Training" ///
 						3.educ_degree = "College Degree" ///
 						1.married = "Married" 0.married = "Not Married" ///
-						1.child = "Child in HH" 2.child = "No Child in HH"  ///
-          )
+						1.child = "Child in HH" 2.child = "No Child in HH")
+    graph export "Output/Figures/Stylized_Facts/1_wedge_H_03-07.png", as(png) replace 
 
-    graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_H_03-07.png", as(png) replace 
+* HPLUS 
+    reghdfe hplus $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+	
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Demographics (FACT 1)
+    coefplot 	(m_sexe)(m_age_group) ///
+				(m_educ_degree)(m_married)(m_child), ///
+          horizontal ///
+		  xtitle("Adjusted Desired Hours") ///
+          ciopts(recast(rcap) lcolor(gs10)) ///
+          mcolor(blue) msymbol(circle) ///
+          nolabel legend(off) ///
+          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
+						1.age_group = "18 - 24" ///
+						2.age_group = "25 - 54" ///
+						3.age_group = "55 - 64" ///
+						1.educ_degree = "No Tertiary Education" ///
+						2.educ_degree = "Vocational Training" ///
+						3.educ_degree = "College Degree" ///
+						1.married = "Married" 0.married = "Not Married" ///
+						1.child = "Child in HH" 2.child = "No Child in HH" )
+    graph export "Output/Figures/Stylized_Facts/1_hplus_H_03-07.png", as(png) replace 
+
+* EMPNBH
+    reghdfe empnbh $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+	
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	* Across Demographics (FACT 1)
+    coefplot 	(m_sexe)(m_age_group) ///
+				(m_educ_degree)(m_married)(m_child), ///
+          horizontal ///
+		  xtitle("Adjusted Actual Hours") ///
+          ciopts(recast(rcap) lcolor(gs10)) ///
+          mcolor(blue) msymbol(circle) ///
+          nolabel legend(off) ///
+          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
+          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
+						1.age_group = "18 - 24" ///
+						2.age_group = "25 - 54" ///
+						3.age_group = "55 - 64" ///
+						1.educ_degree = "No Tertiary Education" ///
+						2.educ_degree = "Vocational Training" ///
+						3.educ_degree = "College Degree" ///
+						1.married = "Married" 0.married = "Not Married" ///
+						1.child = "Child in HH" 2.child = "No Child in HH" )
+    graph export "Output/Figures/Stylized_Facts/1_empnbh_H_03-07.png", as(png) replace 
+	
+***** FACT 3 ***** 
+	global controls sexe age_group educ_degree married child salmet 
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.salmet 
+	global controls salmet
+* MISMATCH    
+	reghdfe wedge i.salmet  [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+	
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
 	
 	* Across Income Brackets 
-	
 	coefplot 	(m_salmet), ///
 				horizontal ///
 				ciopts(recast(rcap) lcolor(gs10)) ///
 				mcolor(blue) msymbol(circle) ///
-				title("Average Adjusted Wedge by Wage Bracket (2003–2007)") xtitle("Adjusted Wedge") ///
+				xtitle("Adjusted Work Hours Mismatch") ///
 				nolabel legend(off) ///
-				coeflabels( 3.salmet = "1,000–1,249" ///
+				coeflabels( 2.salmet = "SMIC-999" 3.salmet = "1,000–1,249" ///
 				4.salmet = "1,250–1,499" 5.salmet = "1,500–1,999" 6.salmet = "2,000–2,499" ///
 				7.salmet = "2,500–2,999" 8.salmet = "3,000–4,999" 9.salmet = "5,000–7,999" ///
-				10.salmet = "8,000+" )
+				10.salmet = "8,000+" 98.salmet = "Non-Response" )
+	graph export "Output/Figures/Stylized_Facts/2_wedge_H_03-07.png", as(png) replace
 	
-	graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_bywagecat_03-07.png", as(png) replace
+* HPLUS    
+	reghdfe hplus $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+	
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Income Brackets 
+	coefplot 	(m_salmet), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Desired Hours") ///
+				nolabel legend(off) ///
+				coeflabels( 2.salmet = "SMIC-999" 3.salmet = "1,000–1,249" ///
+				4.salmet = "1,250–1,499" 5.salmet = "1,500–1,999" 6.salmet = "2,000–2,499" ///
+				7.salmet = "2,500–2,999" 8.salmet = "3,000–4,999" 9.salmet = "5,000–7,999" ///
+				10.salmet = "8,000+" 98.salmet = "Non-Response" )
+	graph export "Output/Figures/Stylized_Facts/2_hplus_H_03-07.png", as(png) replace
+	
+* EMPNBH 
+	global controls sexe age_group educ_degree married child salmet 
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.salmet 
+    
+	reghdfe wedge $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+	
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Income Brackets 
+	coefplot 	(m_salmet), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Actual Hours") ///
+				nolabel legend(off) ///
+				coeflabels( 2.salmet = "SMIC-999" 3.salmet = "1,000–1,249" ///
+				4.salmet = "1,250–1,499" 5.salmet = "1,500–1,999" 6.salmet = "2,000–2,499" ///
+				7.salmet = "2,500–2,999" 8.salmet = "3,000–4,999" 9.salmet = "5,000–7,999" ///
+				10.salmet = "8,000+" 98.salmet = "Non-Response" )
+	graph export "Output/Figures/Stylized_Facts/2_empnbh_H_03-07.png", as(png) replace
 	
 	/*
 		In the above regression, I do not include empnbh_cat in order to avoid mechanically
@@ -134,11 +289,12 @@ keep if in_tepa
 		However, to study the wedge across different wage brackets, I include them in the next regression.
 	*/
 	
+***** FACT 4 ***** 
 	global controls sexe age_group educ_degree married child salmet empnbh_cat
-
     global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.salmet i.empnbh_cat
-	
-	reghdfe wedge $i_controls if datdeb_q <= tq(2007q3) [pweight = extri], absorb(datdeb) cluster(indiv_num)
+
+* MISMATCH 
+	reghdfe wedge $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
     estimates store base_model
 
     foreach var in $controls {
@@ -146,48 +302,174 @@ keep if in_tepa
         margins `var', post
         estimates store m_`var'
     }
-	
 	* Across Hours Worked
-	
 	coefplot 	(m_empnbh_cat), ///
 				horizontal ///
 				ciopts(recast(rcap) lcolor(gs10)) ///
 				mcolor(blue) msymbol(circle) ///
-				title("Average Adjusted Wedge by Hours worked (2003–2007)") xtitle("Adjusted Wedge") ///
+				xtitle("Adjusted Work Hours Mismatch") ///
 				nolabel legend(off) ///
+				keep(5.empnbh_cat 6.empnbh_cat 7.empnbh_cat 8.empnbh_cat 9.empnbh_cat 10.empnbh_cat 11.empnbh_cat) ///
 				coeflabels(5.empnbh_cat = "35–39" 6.empnbh_cat = "40–44" 7.empnbh_cat = "45–49" ///
 				8.empnbh_cat = "50–54" 9.empnbh_cat = "55–59" 10.empnbh_cat = "60–64" 11.empnbh_cat = "65+")
+	graph export "Output/Figures/Stylized_Facts/3_wedge_H_03-07.png", as(png) replace
+
+* HPLUS 
+	reghdfe hplus $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	* Across Hours Worked
+	coefplot 	(m_empnbh_cat), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Desired Hours") ///
+				nolabel legend(off) ///
+				keep(5.empnbh_cat 6.empnbh_cat 7.empnbh_cat 8.empnbh_cat 9.empnbh_cat 10.empnbh_cat 11.empnbh_cat) ///
+				coeflabels(5.empnbh_cat = "35–39" 6.empnbh_cat = "40–44" 7.empnbh_cat = "45–49" ///
+				8.empnbh_cat = "50–54" 9.empnbh_cat = "55–59" 10.empnbh_cat = "60–64" 11.empnbh_cat = "65+")
+	graph export "Output/Figures/Stylized_Facts/3_hplus_H_03-07.png", as(png) replace
+
+* EMPNBH 
+	reghdfe empnbh $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	* Across Hours Worked
+	coefplot 	(m_empnbh_cat), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Actual Hours") ///
+				nolabel legend(off) ///
+				keep(5.empnbh_cat 6.empnbh_cat 7.empnbh_cat 8.empnbh_cat 9.empnbh_cat 10.empnbh_cat 11.empnbh_cat) ///
+				coeflabels(5.empnbh_cat = "35–39" 6.empnbh_cat = "40–44" 7.empnbh_cat = "45–49" ///
+				8.empnbh_cat = "50–54" 9.empnbh_cat = "55–59" 10.empnbh_cat = "60–64" 11.empnbh_cat = "65+")
+	graph export "Output/Figures/Stylized_Facts/3_empnbh_H_03-07.png", as(png) replace
 	
-	graph export "Output/Figures/Wedge_Heterogeneity/og_agg_wedge_byhoursworked_03-07.png", as(png) replace
+
+**# ROBUSTNESS *****	
+use Data/Clean/SYNTH_2, clear 
+	keep if datdeb < tepa_date 
 	
+	foreach var in "" "1"{ 
+		
+		cap drop wedge`var' 
+		cap drop wedge`var'_sq 
+		cap drop abs_wedge`var'
+		gen wedge`var' = hplus`var' - empnbh
+		gen wedge`var'_sq 	= wedge`var'^2
+		gen abs_wedge`var' = abs(wedge`var')
+		
+		cap drop tplus`var' 
+		gen tplus`var' = .
+		replace tplus`var' = 1 if wedge`var' > 0 	& wedge`var' !=. 
+		replace tplus`var' = 0 if wedge`var' == 0  	& wedge`var' !=. 
+		replace tplus`var' = 0 if wedge`var' < 0	& wedge`var' !=. 
+	}
+
+* FACT 1 
+	cumul wedge1, gen(cdf_wedge1)
+	twoway line cdf_wedge1 wedge1, sort lwidth(thin) lcolor(blue) ///
+		ytitle("Empirical Cumulative Probability") ///
+		xtitle("Work Hours Mismatch") ///
+		xline(0, lcolor(red) lpattern(dash))
+	graph export "Output/Figures/Stylized_Facts/0_CDF_robustness.png", as(png) replace 
+
+* FACT 2 
+	global controls sexe age_group educ_degree married child 
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child 
 	
+	* MISMATCH 
+	reghdfe wedge1 $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
 	
-
-
-**********************************
-**# Wedge by Education & Age *****
-**********************************
-
-use Data/Clean/p_df_wedges, clear
-
-	gen period = . 
-	replace period = 1 if datdeb < tepa_date
-	replace period = 2 if datdeb >= tepa_date & datdeb < abrog_date
-	replace period = 3 if datdeb >= abrog_date & datdeb <macron_date
-
-	graph bar wedge, over(period, relabel(1 "Pre-TEPA" 2 "TEPA" 3 "Post-TEPA")) over(agd) 
-
-
-	gen pos = . 
-	replace pos = 1 if (wedge >0 & wedge !=.)
-	replace pos = 0 if (wedge <0 & wedge !=.)
-	count if wedge !=. // 306,028
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
 	
-	collapse (count) wedge [pweight=extri], by(pos nivp)
-	replace wedge = (wedge / 306028) *100
-	reshape wide wedge, i(nivp) j(pos)
+	* Across Demographics (FACT 1)
+    coefplot 	(m_sexe)(m_age_group) ///
+				(m_educ_degree)(m_married)(m_child), ///
+          horizontal ///
+		  xtitle("Adjusted Work Hours Mismatch") ///
+          ciopts(recast(rcap) lcolor(gs10)) ///
+          mcolor(blue) msymbol(circle) ///
+          nolabel legend(off) ///
+          coeflabels(	1.sexe = "Male" 0.sexe = "Female" ///
+						1.age_group = "18 - 24" ///
+						2.age_group = "25 - 54" ///
+						3.age_group = "55 - 64" ///
+						1.educ_degree = "No Tertiary Education" ///
+						2.educ_degree = "Vocational Training" ///
+						3.educ_degree = "College Degree" ///
+						1.married = "Married" 0.married = "Not Married" ///
+						1.child = "Child in HH" 2.child = "No Child in HH")
+    graph export "Output/Figures/Stylized_Facts/1_wedge_H_03-07_ROBUST.png", as(png) replace 
+
+
+* FACT 3
+	global controls sexe age_group educ_degree married child cat_salred1 
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.cat_salred1
+	* MISMATCH    
+	reghdfe wedge1 $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
 	
-	graph bar wedge, over(pos) over(nivp)
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	
+	* Across Income Brackets 
+	coefplot 	(m_cat_salred1, drop(1.cat_salred1)), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Work Hours Mismatch") ///
+				nolabel legend(off) ///
+				coeflabels( 2.cat_salred1 = "SMIC-999" 3.cat_salred1 = "1,000–1,249" ///
+				4.cat_salred1 = "1,250–1,499" 5.cat_salred1 = "1,500–1,999" 6.cat_salred1 = "2,000–2,499" ///
+				7.cat_salred1 = "2,500–2,999" 8.cat_salred1 = "3,000–4,999" 9.cat_salred1 = "5,000–7,999" ///
+				10.cat_salred1 = "8,000+" 98.cat_salred1 = "Non-Response" )
+	graph export "Output/Figures/Stylized_Facts/2_wedge_H_03-07_ROBUST.png", as(png) replace
+
+* FACT 4
+	global controls sexe age_group educ_degree married child cat_salred1 empnbh_cat
+    global i_controls i.sexe i.age_group i.educ_degree i.married i.child i.cat_salred1 i.empnbh_cat
+
+* MISMATCH 
+	reghdfe wedge1 $i_controls [pweight = extri], absorb(datdeb) cluster(indiv_num)
+    estimates store base_model
+
+    foreach var in $controls {
+        estimates restore base_model
+        margins `var', post
+        estimates store m_`var'
+    }
+	* Across Hours Worked
+	coefplot 	(m_empnbh_cat), ///
+				horizontal ///
+				ciopts(recast(rcap) lcolor(gs10)) ///
+				mcolor(blue) msymbol(circle) ///
+				xtitle("Adjusted Work Hours Mismatch") ///
+				nolabel legend(off) ///
+				keep(5.empnbh_cat 6.empnbh_cat 7.empnbh_cat 8.empnbh_cat 9.empnbh_cat 10.empnbh_cat 11.empnbh_cat) ///
+				coeflabels(5.empnbh_cat = "35–39" 6.empnbh_cat = "40–44" 7.empnbh_cat = "45–49" ///
+				8.empnbh_cat = "50–54" 9.empnbh_cat = "55–59" 10.empnbh_cat = "60–64" 11.empnbh_cat = "65+")
+	graph export "Output/Figures/Stylized_Facts/3_wedge_H_03-07_ROBUST.png", as(png) replace
+
 	
 
 *****************
@@ -199,22 +481,11 @@ use Data/Clean/SYNTH_2.dta, clear
 
 	preserve 
 		collapse (mean) hplus empnbh [pweight=extri], by(datdeb_q)
-		twoway(bar hplus datdeb_q, barwidth(0.8)),
-			xtitle("") ytitle("Desired Hours")
+		twoway(bar empnbh datdeb_q, barwidth(0.8)),
+			 xtitle("") ytitle("Desired Hours") xline(`=date("2007-10-01", "YMD")') 
 	restore 
 
 	
-	
-******************
-* Palying with retraites
-******************
-	
-		
-
-		
-******************
-******************
-
 
 
 ******************
@@ -226,35 +497,86 @@ use Data/Clean/SYNTH_2.dta, clear
 ************************************************************************
 **# APPENDIX : Statistics on Individuals having Responded to HPLUS *****
 ************************************************************************
-use Data/Clean/SYNTH_2, clear 
-	
-	keep if in_tepa
 
+* TOTAL 
+use Data/Clean/df_wedges, clear 
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	cap drop hrep
 	gen hrep 		= . 
 	replace hrep 	= 1 if hplus != .	
 	replace hrep 	= 0 if hplus == . 
-	
 	* By Socio-Demographic Group
 	tabstat sexe age annees_etudes child nbenfc married ancentr empnbh emphre, by(hrep) stat(mean sd) column(statistics)
-	
-	
 	* T-TEST on the means between hrep categories  
 	foreach var in sexe age annees_etudes child nbenfc married ancentr empnbh emphre{
 		dis "T-test for variable `var'"
 		ttest `var', by(hrep)
 	}
-	
-	* By Income Level 
-	tab salmet if hrep ==1
-	tab salmet if hrep ==0
-	
 	* Desired Hours Distribution of non-repsonses by Job industry
 	tab naf10 if hrep == 1
 	tab naf10 if hrep == 0 
-
 	* Wage distributions
 	twoway (hist salred if salred < 10000 & hrep ==0, percent color(%60) fcolor(red))(hist salred if salred < 10000 & hrep == 1, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Individuals Having Responded to the Desired Hours Question") label(2 "Individuals Having not Responded to the Desired Hours Question")) xtitle("Net Monthly Income")
-	graph export "Output/Figures/Descriptives/hplus_reponses_wages.png", as(png) replace
+	graph export "Output/Figures/Descriptives/hplus_wages_TOTAL.png", as(png) replace
+
+* DESCRIPTIVE
+use Data/Clean/df_wedges, clear 
+	keep if datdeb < tepa_date
+	keep if CDI 
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	cap drop hrep
+	gen hrep 		= . 
+	replace hrep 	= 1 if hplus != .	
+	replace hrep 	= 0 if hplus == . 
+	* By Socio-Demographic Group
+	tabstat sexe age annees_etudes child nbenfc married ancentr empnbh emphre, by(hrep) stat(mean sd) column(statistics)
+	* T-TEST on the means between hrep categories  
+	foreach var in sexe age annees_etudes child nbenfc married ancentr empnbh emphre{
+		dis "T-test for variable `var'"
+		ttest `var', by(hrep)
+	}
+	* Desired Hours Distribution of non-repsonses by Job industry
+	tab naf10 if hrep == 1
+	tab naf10 if hrep == 0 
+	* Wage distributions
+	twoway (hist salred if salred < 10000 & hrep ==0, percent color(%60) fcolor(red))(hist salred if salred < 10000 & hrep == 1, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Individuals Having Responded to the Desired Hours Question") label(2 "Individuals Having not Responded to the Desired Hours Question")) xtitle("Net Monthly Income")
+	graph export "Output/Figures/Descriptives/hplus_wages_DESCRIPTIVE.png", as(png) replace
+
+* TEPA  
+use Data/Clean/df_wedges, clear 
+	keep if in_tepa
+	keep if full_time 
+	keep if du_hhc
+	keep if no_interruption
+	keep if mod_agree ==0
+ 	keep if min_smic
+	cap drop hrep
+	gen hrep 		= . 
+	replace hrep 	= 1 if hplus != .	
+	replace hrep 	= 0 if hplus == . 
+	* By Socio-Demographic Group
+	tabstat sexe age annees_etudes child nbenfc married ancentr empnbh emphre, by(hrep) stat(mean sd) column(statistics)
+	* T-TEST on the means between hrep categories  
+	foreach var in sexe age annees_etudes child nbenfc married ancentr empnbh emphre{
+		dis "T-test for variable `var'"
+		ttest `var', by(hrep)
+	}
+	* Desired Hours Distribution of non-repsonses by Job industry
+	tab naf10 if hrep == 1
+	tab naf10 if hrep == 0 
+	* Wage distributions
+	twoway (hist salred if salred < 10000 & hrep ==0, percent color(%60) fcolor(red))(hist salred if salred < 10000 & hrep == 1, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Individuals Having Responded to the Desired Hours Question") label(2 "Individuals Having not Responded to the Desired Hours Question")) xtitle("Net Monthly Income")
+	graph export "Output/Figures/Descriptives/hplus_wages_TEPA.png", as(png) replace
+
 	
 **********************************************
 **# APPENDIX : Statistics on Hours Worked ****
@@ -304,12 +626,15 @@ foreach v in nbhp hhc empnbh {
 ***********************************************
 **# APPENDIX : Statistics on the Mismatch *****
 ***********************************************
-use Data/Clean/p_df_wedges, clear
+use Data/Clean/SYNTH_2, clear 
 	keep if in_tepa 
 	
 	* Gender
 	tabstat hplus empnbh wedge, stat(mean sd n) by(sexe)
+	ttest hplus, by(sexe)
+	ttest empnbh, by(sexe)
 	ttest wedge, by(sexe)
+
 	
 	* Age
 	tabstat hplus empnbh wedge, stat(mean sd n) by(age_g)
@@ -332,8 +657,7 @@ use Data/Clean/p_df_wedges, clear
 	}
 	
 	* Income 
-	drop if salred < smic_m
-	tabstat hplus empnbh wedge, stat(mean sd n) by(salmet)
+	tabstat hplus empnbh wedge, stat(mean sd n) by(cat_salred1)
 	forvalues i=3/10{
 			ttest hplus = empnbh if salmet  == `i'
 		}
@@ -350,6 +674,7 @@ use Data/Clean/SYNTH_2, clear
 
  	* Sample 
 	keep if in_tepa 
+	keep if datdeb < tepa_date
 	keep if CDI 
 	keep if full_time 
 	keep if du_hhc
@@ -381,24 +706,24 @@ use Data/Clean/SYNTH_2, clear
 	}
 	
 	* MISMATCH Distrib
-	twoway (hist wedge if cat ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist wedge if cat==2 & wedge < 20 & wedge > -20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-border Workers") label(2 "Domestic Workers")) xtitle("Mismatch")
-	graph export "Output/Figures/Descriptives/ID1_mismatch.png", as(png) replace
+	twoway (hist wedge if cat ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist wedge if cat==2 & wedge < 20 & wedge > -20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-border Workers") label(2 "Domestic Workers")) xtitle("Mismatch (Before October 2007)")
+	graph export "Output/Figures/Descriptives/XBorder_mismatch.png", as(png) replace
 	
 	* ABSOLUTE MISMATCH Distrib
-	twoway (hist abs_wedge if cat ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist abs_wedge if cat==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Absolute Mismatch")
-	graph export "Output/Figures/Descriptives/ID1_abs_mismatch.png", as(png) replace
+	twoway (hist abs_wedge if cat ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist abs_wedge if cat==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Absolute Mismatch (Before October 2007)")
+	graph export "Output/Figures/Descriptives/XBorder_abs_mismatch.png", as(png) replace
 	
 	* HPLUS Distrib 
-	twoway (hist hplus if cat ==1 & hplus > 34 & hplus < 71, width(2)  percent color(%60) fcolor(red))(hist hplus if cat==2 & hplus > 34 & hplus < 71, width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Desired Hours")
-	graph export "Output/Figures/Descriptives/ID1_hplus.png", as(png) replace
+	twoway (hist hplus if cat ==1 & hplus > 34 & hplus < 71, width(2)  percent color(%60) fcolor(red))(hist hplus if cat==2 & hplus > 34 & hplus < 71, width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Desired Hours (Before October 2007)")
+	graph export "Output/Figures/Descriptives/XBorder_hplus.png", as(png) replace
 	
 	* EMPNBH Distrib 
-	twoway (hist empnbh if cat ==1 , width(2)  percent color(%60) fcolor(red))(hist hplus if cat==2 , width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Actual Hours")
-	graph export "Output/Figures/Descriptives/ID1_empnbh.png", as(png) replace
+	twoway (hist empnbh if cat ==1 , width(2)  percent color(%60) fcolor(red))(hist hplus if cat==2 , width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Actual Hours (Before October 2007)")
+	graph export "Output/Figures/Descriptives/XBorder_empnbh.png", as(png) replace
 	
 	* WAGE DISTRIB
-	twoway (hist salred if salred < 10000 & cat==1, percent color(%60) fcolor(red))(hist salred if salred < 10000 & cat == 2, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Net Monthly Income")
-	graph export "Output/Figures/Descriptives/ID1_wages.png", as(png) replace
+	twoway (hist salred if salred < 10000 & cat==1, percent color(%60) fcolor(red))(hist salred if salred < 10000 & cat == 2, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Cross-Border Workers") label(2 "Domestic Workers")) xtitle("Net Monthly Income (Before October 2007)")
+	graph export "Output/Figures/Descriptives/XBorder_wages.png", as(png) replace
 	
 	
 	* Mom and Dad's Occupation
@@ -441,6 +766,7 @@ use Data/Clean/SYNTH_2, clear
 
  	* Sample 
 	keep if in_tepa 
+	//keep if datdeb < tepa_date 
 	keep if CDI 
 	keep if full_time 
 	keep if du_hhc
@@ -470,25 +796,26 @@ use Data/Clean/SYNTH_2, clear
 		ttest `var', by(cat2)
 	}
 	
+	
 	* MISMATCH Distrib
-	twoway (hist wedge if cat2 ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist wedge if cat2==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle(" Mismatch")
-	graph export "Output/Figures/Descriptives/ID2_mismatch.png", as(png) replace
+	twoway (hist wedge if cat2 ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist wedge if cat2==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle(" Mismatch (Before October 2007)")
+	graph export "Output/Figures/Descriptives/IDforfait_mismatch.png", as(png) replace
 	
 	* ABSOLUTE MISMATCH Distrib
-	twoway (hist abs_wedge if cat2 ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist abs_wedge if cat2==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Absolute Mismatch")
-	graph export "Output/Figures/Descriptives/ID2_abs_mismatch.png", as(png) replace
+	twoway (hist abs_wedge if cat2 ==1 & wedge < 20 & wedge >-20, width(1)  percent color(%60) fcolor(red))(hist abs_wedge if cat2==2 & wedge < 20 & wedge >-20, width(1)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Absolute Mismatch (Before October 2007)")
+	graph export "Output/Figures/Descriptives/IDforfait_abs_mismatch.png", as(png) replace
 	
 	* HPLUS Distrib 
-	twoway (hist hplus if cat2 ==1 & hplus > 34 & hplus < 71, width(2)  percent color(%60) fcolor(red))(hist hplus if cat2==2 & hplus > 34 & hplus < 71, width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Desired Hours")
-	graph export "Output/Figures/Descriptives/ID2_hplus.png", as(png) replace
+	twoway (hist hplus if cat2 ==1 & hplus > 34 & hplus < 71, width(2)  percent color(%60) fcolor(red))(hist hplus if cat2==2 & hplus > 34 & hplus < 71, width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Desired Hours (Before October 2007)")
+	graph export "Output/Figures/Descriptives/IDforfait_hplus.png", as(png) replace
 	
 	* EMPNBH Distrib 
-	twoway (hist empnbh if cat2 ==1 , width(2)  percent color(%60) fcolor(red))(hist hplus if cat2==2 , width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Actual Hours")
-	graph export "Output/Figures/Descriptives/ID2_empnbh.png", as(png) replace
+	twoway (hist empnbh if cat2 ==1 , width(2)  percent color(%60) fcolor(red))(hist hplus if cat2==2 , width(2)  color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Actual Hours (Before October 2007)")
+	graph export "Output/Figures/Descriptives/IDforfait_empnbh.png", as(png) replace
 	
 	* WAGE DISTRIB
-	twoway (hist salred if salred < 10000 & cat2==1 , percent color(%60) fcolor(red))(hist salred if salred < 10000 & cat2 == 2, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Net Monthly Income")
-	graph export "Output/Figures/Descriptives/ID2_wages.png", as(png) replace
+	twoway (hist salred if salred < 10000 & cat2==1 , percent color(%60) fcolor(red))(hist salred if salred < 10000 & cat2 == 2, color(%60) percent  fcolor(blue)), legend( size(small) position(2) ring(0) label(1 "Workers on Hours Contracts") label(2 "Workers on Days Contracts")) xtitle("Net Monthly Income (Before October 2007)")
+	graph export "Output/Figures/Descriptives/IDforfait_wages.png", as(png) replace
 
 	
 ***************************************************
@@ -764,7 +1091,7 @@ use Data/Clean/p_df_wedges, clear
 **# CDFs ***** 
 **************
 
-use Data/Clean/p_df_wedges, clear
+use Data/Clean/SYNTH_2, clear
 
 	sort indiv_num datdeb 
 	
@@ -799,7 +1126,7 @@ use Data/Clean/p_df_wedges, clear
 			yscale(range(0 1)) ///
 			legend(order(1 "Actual Hours" 2 "Mean Actual Hours" 3 "Desired Hours" 4 "Mean Desired Hours")ring(0) position(4))
 		
-	graph export "Output/Figures/CDFs/Weekly_Hours/CDF_TEPA_CDD.png", as(png) replace
+	graph export "Output/Figures/INTRO/CDF_preTEPA.png", as(png) replace
 	
 	* Working vs desired Working Hours (year by year)
 	

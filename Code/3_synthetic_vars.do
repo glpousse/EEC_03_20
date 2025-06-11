@@ -62,27 +62,17 @@ use Data/Clean/df_wedges, clear
 	keep if mod_agree ==0			// no modulation agreement 
 	keep if min_smic				// Min wage 	
 	
-	gen cat_tenure = . 
-	replace cat_tenure = 1 if ancentr < 5
-	replace cat_tenure = 2 if ancentr < 11 & ancentr > 4
-	replace cat_tenure = 3 if ancentr < 21  & ancentr > 10
-	replace cat_tenure = 4 if ancentr < 31 & ancentr > 20
-	replace cat_tenure = 5 if ancentr > 30
-	lab def tenure_lbl 1 "0-4" 2 "5-10" 3 "11-20" 4 "21-30" 5 "30+" 
-	lab values cat_tenure tenure_lbl 
-	
 	* STEP 1: Cohort Monthly Averages
 	
-	* Generating cohorts (GOAL: MAXIMISE # OF CATEGORIES (PRECISION) WHILE HAVING AT LEAST 10 OBS PER
-	* COHORT PER MONTH (MINIMIZE OUTLIER SENSITIVITY))
-	egen cohort_id_salred = group(age_cohort sexe naf4 cat_tenure married educ_degree), missing
+	* GENERATING COHORTS (GOAL: Maximize # of categories while minimizaing # of small categories
+	egen cohort_id_salred = group(age_cohort sexe nivet), missing
 	
 	bysort cohort_id_salred: gen cohort_id_count = _N
 	
 	preserve 
 		collapse (mean) cohort_id_count [pw=extri], by(cohort_id_salred) 
-		count										// 1,045 cohorts total. 
-		count if cohort_id_count <10				// 347 cohorts with less than 10 individuals. 
+		count										// 142 cohorts total. 
+		count if cohort_id_count <10				// 4 cohorts with less than 10 individuals. 
 		levelsof cohort_id_salred if cohort_id_count < 10, local(lowcount_cohorts)
 		tab cohort_id_salred if cohort_id_count < 10 
 	restore
@@ -97,9 +87,7 @@ use Data/Clean/df_wedges, clear
     local total = `total' + r(N)
 	}
 	display "Total count: `total'" 
-	count if in_tepa & wflag_10 ==1 
-	
-
+	count if in_tepa & wflag_10 ==1 				// 0 People in TEPA and in cohort under 10. 
 save "Data/Clean/wsynth_df_wedges.dta", replace 
 	
 	* Collapsing Monthly Cohort Wage Averages -- I NEED QUARTERLY IF I AM TO USE TSSMOOTH. WHICH ONE?
@@ -125,25 +113,7 @@ save "Data/Clean/MA_wages.dta", replace
 	* LOWESS -- Locally weighted scatterplot smoothing 
 use Data/Clean/wsynth_collapsed, clear 
 	
-// 	* Testing bandwidths
-// 	levelsof cohort_id_salred, local(cohorts)
-// 	foreach c of local cohorts {
-// 		display "Smoothing cohort `c'"
-// 		lowess cohort_salred datdeb_m if cohort_id_salred == `c', bwidth(0.2) gen(smoothed_`c'20)
-// 		lowess cohort_salred datdeb_m if cohort_id_salred == `c', bwidth(0.4) gen(smoothed_`c'40)
-// 		lowess cohort_salred datdeb_m if cohort_id_salred == `c', bwidth(0.7) gen(smoothed_`c'70)
-// 	}
-//	
-// 	foreach bandwidth in 20 40 70{
-// 	gen salred_lowess_`bandwidth' = .
-// 	levelsof cohort_id_salred, local(cohorts)
-// 		foreach c of local cohorts {
-// 			replace salred_lowess_`bandwidth' = smoothed_`c'`bandwidth' if cohort_id_salred == `c'
-// 		}
-// 	}
-// 	drop smoothed_*
-	
-	* Original code for bandwidth 0.4
+	* Bandwidth 0.4
 	levelsof cohort_id_salred, local(cohorts)
 	foreach c of local cohorts {
 		display "Smoothing cohort `c'"
@@ -156,8 +126,79 @@ use Data/Clean/wsynth_collapsed, clear
 		replace salred_lowess = smoothed_`c' if cohort_id_salred == `c'
 	}
 	drop smoothed_*
-
 save "Data/Clean/LOWESS_wages.dta", replace
+
+	* B-SPLINE 
+// Load your cleaned data
+use Data/Clean/wsynth_collapsed, clear
+
+levelsof cohort_id_salred, local(cohorts)
+gen income_smooth = .
+
+
+foreach c of local cohorts {
+    preserve
+        keep if cohort_id == `c'  // Keep only the current cohort
+        sort datdeb_m
+
+        * Determine knots
+        quietly count
+        local n = r(N)
+		if `n' < 2 {
+			restore 
+			continue 
+		}
+    
+        * Create a tag for unique values of datdeb_m
+        egen unique_tag = tag(datdeb_m)
+        quietly count if unique_tag == 1
+        local unique_vals = r(N)  // Count unique values
+        
+        local k = max(3, floor(sqrt(`n')*1.5)) // I boost the square root (OG fit was too smooth) 
+        local k = min(`k', `unique_vals')  // Ensure k does not exceed unique values
+
+        if `k' == 2 { 
+            * If fewer than 2 knots, fit simple linear regression
+            regress cohort_salred datdeb_m
+            predict smooth_temp, xb
+        }
+        else {
+            * Get knot positions using _pctile
+            local knotvals ""
+            forvalues i = 1/`k' {
+                local pct = `i'/(`k'+1)*100
+                _pctile datdeb_m, p(`pct')  // Calculate percentile
+                local knotvals "`knotvals' `r(r1)'"  // Store knot values
+            }
+
+            * Build spline and fit model
+            mkspline sp_time = datdeb_m, cubic knots(`knotvals')  
+            regress cohort_salred sp_time*
+            predict smooth_temp, xb
+        }
+        
+        * Store smoothed income
+        gen smoothed_income = smooth_temp
+        keep datdeb_m cohort_id smoothed_income  
+        save "Data/bspline/salred/smoothed_`c'", replace
+    restore
+}
+
+	* Append smoothed results
+	local files
+	forvalues i = 1/142 {
+		if inlist(`i', 19, 29, 58) continue  // Skip missing files
+		local files `files' "Data/bspline/salred/smoothed_`i'.dta"
+}
+
+use Data/bspline/smoothed_1.dta, clear
+	forvalues i = 2/142 {
+		if inlist(`i', 19, 29, 58) continue
+		append using "Data/bspline/salred/smoothed_`i'"
+}
+	rename smoothed_income salred_bspline
+
+save "Data/Clean/BSPLINE_wages.dta", replace
 	
 	* Merging back onto dataset
 use Data/Clean/wsynth_df_wedges, clear 
@@ -167,13 +208,28 @@ use Data/Clean/wsynth_df_wedges, clear
 	merge m:m cohort_id_salred datdeb_m using "Data/Clean/LOWESS_wages.dta"
 	drop _merge
 	merge m:m cohort_id_salred datdeb_m using "Data/Clean/MA_wages.dta"
+	drop _merge 
+	merge m:m cohort_id_salred datdeb_m using "Data/Clean/BSPLINE_wages.dta"
 	drop _merge
-	order indiv_num cohort_id_salred rgi salred salred_CMA salred_LMA salred_lowess
+	order indiv_num cohort_id_salred rgi salred salred_CMA salred_LMA salred_lowess salred_bspline 
 save "Data/Clean/wsynth_df_wedges.dta", replace 
 
-	count if salred_CMA == . 	// 8,133
-	count if salred_LMA ==.		// 1,997
-	count if salred_lowess == .	// 1,120
+	count if salred_CMA 	== . 	//  15,850
+	count if salred_LMA 	==.		//  5,486
+	count if salred_lowess 	== .	//  3,855
+	count if salred_bspline ==. 	//  3,835
+	
+	* MA
+	preserve 
+		collapse (mean) salred_CMA salred_LMA  salred, by (datdeb_q)
+		twoway(line salred_CMA datdeb_q)(line salred_LMA datdeb_q)(line salred datdeb_q)
+	restore 
+	
+	* LOWESS BSPLINE
+	preserve 
+		collapse (mean) salred_lowess salred_bspline  salred, by (datdeb_q)
+		twoway(line salred_bspline datdeb_q)(line salred_lowess datdeb_q)(line salred datdeb_q)
+	restore 
 
 	* STEP 3 : Applying Estimated Wage Variation to True wage values
 
@@ -197,7 +253,7 @@ use Data/Clean/wsynth_df_wedges, clear
 
 	* CASE 1: For individuals with no observations, I propose to assign imputed wage values. 
 	
-	foreach var in salred_CMA salred_LMA salred_lowess {
+	foreach var in salred_CMA salred_LMA salred_lowess salred_bspline {
 		gen w`var' 		= salred 
 		replace w`var' 	= `var' if du1 ==0 & salred ==. 
 	}
@@ -213,12 +269,12 @@ use Data/Clean/wsynth_df_wedges, clear
 	
 	* Computing Synthetic Growth Rates & Merging
 	preserve 
-		collapse (mean) salred_CMA salred_LMA salred_lowess [pw=extri], by (datdeb_m cohort_id_salred)
+		collapse (mean) salred_CMA salred_LMA salred_lowess salred_bspline [pw=extri], by (datdeb_m cohort_id_salred)
 		sort cohort_id_salred datdeb_m
-		foreach var in salred_CMA salred_LMA salred_lowess{ 
+		foreach var in salred_CMA salred_LMA salred_lowess salred_bspline{ 
 			bysort cohort_id_salred: gen wage_growth_`var' = (`var' - `var'[_n-1]) / `var'[_n-1]
 		}
-		drop salred_CMA salred_LMA salred_lowess
+		drop salred_CMA salred_LMA salred_lowess salred_bspline
 		tempfile synth_wgrowth_rates
 		save `synth_wgrowth_rates'
 	restore 
@@ -227,7 +283,7 @@ use Data/Clean/wsynth_df_wedges, clear
 	drop _merge
 	
 	* Applying the Synthetic Growth Rate to True Wages 
-	foreach var in salred_CMA salred_LMA salred_lowess {
+	foreach var in salred_CMA salred_LMA salred_lowess salred_bspline {
 		* Forwards 
 		bysort indiv_num: replace w`var' = w`var'[_n-1] * (1+wage_growth_`var') if (du1 == 1 & w`var' ==.)
 		
@@ -262,7 +318,7 @@ use Data/Clean/wsynth_df_wedges, clear
 	drop first_temp last_temp
 	
 	* Spreading values for the first and last synthtetic wage observations 
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		gen first_temp = salred_`var' if rank_duw == 1 & du1 ==2 & salred !=. 
 		gen last_temp = salred_`var' if rank_duw == 2 & du1 ==2 & salred !=. 
 		bysort indiv_num: egen first_synth_w`var' = max(first_temp)
@@ -277,12 +333,12 @@ use Data/Clean/wsynth_df_wedges, clear
 	gen rel_pos = (datdeb - first_time) / (last_time - first_time) if inside 
 	
 	* The normalization formula: generating the adjustment coefficient
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		gen log_adj_`var' = log(last_salred / last_synth_w`var') * rel_pos + log(first_salred / first_synth_w`var') * (1 - rel_pos)
 	}
 	
 	* Applying the adjustement coeff 
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		replace wsalred_`var' = salred_`var' * exp(log_adj_`var') if inside
 	}
 	order datdeb indiv_num rgi wage_growth* salred_* wsalred*
@@ -291,7 +347,7 @@ use Data/Clean/wsynth_df_wedges, clear
 **# FIGURES: Synthetic Wages *****
 **********************************
 
-	foreach var in salmee salred wsalred_CMA wsalred_LMA wsalred_lowess salsee smic_h smic_m  {
+	foreach var in salmee salred wsalred_CMA wsalred_LMA wsalred_lowess wsalred_bspline salsee smic_h_brut smic_m_net  {
 		cap noisily replace `var' = . if (`var' == 9999998 | `var' == 9999999 | `var' == 999999)
 		cap drop `var'_2015
 		gen `var'_2015 = `var' * (100/cpi)
@@ -299,42 +355,43 @@ use Data/Clean/wsynth_df_wedges, clear
 
 	* Monthly 
 	preserve 	
-	
-		collapse (mean) wsalred_lowess_2015 wsalred_CMA_2015 wsalred_LMA_2015 salred_2015 wsalred_lowess wsalred_CMA wsalred_LMA salred, by(datdeb_m)
+		collapse (mean) wsalred_lowess_2015 wsalred_CMA_2015 wsalred_LMA_2015 salred_2015 wsalred_lowess wsalred_CMA wsalred_LMA wsalred_bspline wsalred_bspline_2015 salred, by(datdeb_m)
 		
-		twoway(line wsalred_lowess_2015 datdeb_m)(line wsalred_CMA_2015 datdeb_m)(line wsalred_LMA_2015 datdeb_m)(line salred_2015 datdeb_m) , ///
-		title(Monthly Evolution of True and Synthetic Wages (2015 base)) ///
+		twoway(line wsalred_CMA_2015 datdeb_m)(line wsalred_LMA_2015 datdeb_m)(line salred_2015 datdeb_m, lcolor(gold)),  ///
+		xtitle("") ytitle("Wage (€, 2015 base)") /// 
+		legend(position(4) ring(0) label(1 "CMA Smoothing") label(2 "LMA Smoothing") label(3 "True Wages")) 
+		graph export "Output/Figures/Synthetic/2015w_CMA_LMA_monthly.png", as(png) replace 
+		
+		twoway(line wsalred_lowess_2015 datdeb_m, lcolor(orange))(line wsalred_bspline_2015 datdeb_m, lcolor(green))(line salred_2015 datdeb_m, lcolor(gold)), ///
 		xtitle("") ytitle("Wage (€, 2015 base)") ///
-		legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Wages")) name(M2015, replace)
-		graph export "Output/Figures/Synthetic/2015wages_monthly_synthetic.png", as(png) replace 
-		
-		twoway (line wsalred_lowess datdeb_m) (line wsalred_CMA datdeb_m) (line wsalred_LMA datdeb_m) (line salred datdeb_m), ///
-    title(Monthly Evolution of True and Synthetic Wages (Nominal Values)) ///
-    xtitle("") ytitle("Wage (€, Nominal)") ///
-	legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Wages")) name(Mnom, replace)
-    graph export "Output/Figures/Synthetic/nomiminalwages_monthly_synthetic.png", as(png) replace
-	
+		legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "B-Spline Smoothing") label(3 "True Wages") ) name(M2015, replace)
+		graph export "Output/Figures/Synthetic/2015w_bspline_lowess_monthly.png", as(png) replace 
 	restore 
 	
 	* Quarterly
-	preserve 
-	
-		collapse (mean) wsalred_lowess_2015 wsalred_CMA_2015 wsalred_LMA_2015 salred_2015 wsalred_lowess wsalred_CMA wsalred_LMA salred, by(datdeb_q)
+	preserve 	
+		collapse (mean) wsalred_lowess_2015 wsalred_CMA_2015 wsalred_LMA_2015 salred_2015 wsalred_lowess wsalred_CMA wsalred_LMA wsalred_bspline wsalred_bspline_2015 salred, by(datdeb_q)
 		
-		twoway(line wsalred_lowess_2015 datdeb_q)(line wsalred_CMA_2015 datdeb_q)(line wsalred_LMA_2015 datdeb_q)(line salred_2015 datdeb_q) , ///
-		title(Quarterly Evolution of True and Synthetic Wages (2015 base)) ///
+		twoway(line wsalred_CMA_2015 datdeb_q)(line wsalred_LMA_2015 datdeb_q)(line salred_2015 datdeb_q, lcolor(gold)),  ///
+		xtitle("") ytitle("Wage (€, 2015 base)") /// 
+		legend(position(4) ring(0) label(1 "CMA Smoothing") label(2 "LMA Smoothing") label(3 "True Wages")) 
+		graph export "Output/Figures/Synthetic/2015w_CMA_LMA_quarterly.png", as(png) replace 
+		
+		twoway(line wsalred_lowess_2015 datdeb_q, lcolor(orange))(line wsalred_bspline_2015 datdeb_q, lcolor(green))(line salred_2015 datdeb_q, lcolor(gold)), ///
 		xtitle("") ytitle("Wage (€, 2015 base)") ///
-		legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Wages")) name(Q2015, replace)
-		graph export "Output/Figures/Synthetic/2015wages_quarterly_synthetic.png", as(png) replace 
-		
-		twoway (line wsalred_lowess datdeb_q) (line wsalred_CMA datdeb_q) (line wsalred_LMA datdeb_q) (line salred datdeb_q), ///
-		title(Quarterly Evolution of True and Synthetic Wages (Nominal Values)) ///
-		xtitle("") ytitle("Wage (€, Nominal)") ///
-		legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Wages")) name(Qnom,replace)
-		graph export "Output/Figures/Synthetic/nomiminalwages_quarterly_synthetic.png", as(png) replace 
-	
+		legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "B-Spline Smoothing") label(3 "True Wages") ) name(M2015, replace)
+		graph export "Output/Figures/Synthetic/2015w_bspline_lowess_quarterly.png", as(png) replace 
 	restore 
+	
+	preserve 	
+		collapse (mean) salred salred1, by(datdeb_q)
 		
+		twoway(line salred datdeb_q)(line salred1 datdeb_q),  ///
+		xtitle("") ytitle("Wage (€, 2015 base)") /// 
+		legend(position(4) ring(0) label(2 "Avg. Wages") label(1 "True Wages")) 
+		//graph export "Output/Figures/Synthetic/2015w_CMA_LMA_quarterly.png", as(png) replace 
+	restore 
+	
 save "Data/Clean/SYNTH_1.dta", replace
 
 do "Code/preliminary_data_prep/XGB.do" 
@@ -382,7 +439,7 @@ use Data/Clean/SYNTH_1, clear
 	* STEP 1: Cohort Monthly Averages
 	
 	* Generating cohorts 
-	egen cohort_id_hplus = group(sexe hhc_cat age_cohort educ_degree married wage_5k), missing
+	egen cohort_id_hplus = group(sexe hhc_cat age_group educ_degree married wage_5k), missing
 	cap drop cohort_id_count
 	bysort cohort_id_hplus: gen cohort_id_count = _N
 	
@@ -443,6 +500,88 @@ use Data/Clean/hsynth_collapsed, clear
 	}
 	drop smoothed_*
 save "Data/Clean/LOWESS_hplus.dta", replace
+
+	* B-Spline
+	// Load your cleaned data
+use Data/Clean/hsynth_collapsed, clear
+
+levelsof cohort_id_hplus, local(cohorts)
+gen hplus_bspline = .
+
+foreach c of local cohorts {
+    preserve
+        keep if cohort_id == `c'  // Keep only the current cohort
+        sort datdeb_q
+
+        * Determine knots
+        quietly count
+        local n = r(N)
+		if `n' < 2 {
+			restore 
+			continue 
+		}
+    
+        * Create a tag for unique values of datdeb_q
+        egen unique_tag = tag(datdeb_q)
+        quietly count if unique_tag == 1
+        local unique_vals = r(N)  // Count unique values
+        
+        local k = max(3, floor(sqrt(`n')*1.5)) // I boost the square root (OG fit was too smooth) 
+        local k = min(`k', `unique_vals')  // Ensure k does not exceed unique values
+
+        if `k' == 2 { 
+            * If fewer than 2 knots, fit simple linear regression
+            regress cohort_hplus datdeb_q
+            predict smooth_temp, xb
+        }
+        else {
+            * Get knot positions using _pctile
+            local knotvals ""
+            forvalues i = 1/`k' {
+                local pct = `i'/(`k'+1)*100
+                _pctile datdeb_q, p(`pct')  // Calculate percentile
+                local knotvals "`knotvals' `r(r1)'"  // Store knot values
+            }
+
+            * Build spline and fit model
+            mkspline sp_time = datdeb_q, cubic knots(`knotvals')  
+            regress cohort_hplus sp_time*
+            predict smooth_temp, xb
+        }
+        
+        * Store smoothed income
+        gen smoothed_hplus = smooth_temp
+        keep datdeb_q cohort_id smoothed_hplus  
+        save "Data/bspline/hplus/smoothed_`c'", replace
+    restore
+}
+
+	* I use the following command in my computer terminal to identify missing files 
+	* Missing files = cohorts which were skipped because of too few knots
+// >	for i in {1..486}; do
+// >     file="smoothed_${i}.dta"
+// >     if [ ! -f "$file" ]; then
+// >         echo "Missing: $file"
+// >     fi
+// > 	done
+
+	* Append smoothed results
+	local files
+	forvalues i = 1/486 {
+		if inlist(`i', 48, 71, 75, 76, 79, 83, 84, 101, 103, 104, 105, 106, 107, 111, 115, 116, 119, 120, 133, 134, 137, 138, 139, 141, 143, 144, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 158, 162, 168, 169, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 199, 200, 201, 202, 203, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 216, 218, 223, 224, 225, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 285, 322, 339, 340, 343, 356, 357, 358, 375, 379, 385, 386, 389, 390, 391, 392, 393, 394, 407, 416, 418, 420, 422, 423, 424, 425, 426, 428, 429, 448, 450, 454, 456, 457, 458, 459, 460, 461, 463, 464, 473, 477, 481, 482, 484, 485) continue
+  // Skip missing files
+		local files `files' "Data/bspline/hplus/smoothed_`i'.dta"
+}
+
+use Data/bspline/hplus/smoothed_1.dta, clear
+	forvalues i = 2/486 {
+		if inlist(`i', 48, 71, 75, 76, 79, 83, 84, 101, 103, 104, 105, 106, 107, 111, 115, 116, 119, 120, 133, 134, 137, 138, 139, 141, 143, 144, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 158, 162, 168, 169, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 199, 200, 201, 202, 203, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 216, 218, 223, 224, 225, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 285, 322, 339, 340, 343, 356, 357, 358, 375, 379, 385, 386, 389, 390, 391, 392, 393, 394, 407, 416, 418, 420, 422, 423, 424, 425, 426, 428, 429, 448, 450, 454, 456, 457, 458, 459, 460, 461, 463, 464, 473, 477, 481, 482, 484, 485) continue
+		append using "Data/bspline/hplus/smoothed_`i'"
+}
+	rename smoothed_hplus hplus_bspline
+
+save "Data/Clean/BSPLINE_hplus.dta", replace
+	
 	
 	* Merging back onto dataset
 use Data/Clean/hsynth_df_wedges, clear 
@@ -454,13 +593,16 @@ use Data/Clean/hsynth_df_wedges, clear
 	drop _merge 						
 	merge m:m cohort_id_hplus datdeb_q using "Data/Clean/MA_hplus.dta"
 	drop _merge
-	order indiv_num cohort_id_hplus rgi hplus hplus_CMA hplus_LMA hplus_lowess
+	merge m:m cohort_id_hplus datdeb_q using "Data/Clean/BSPLINE_hplus.dta"
+	drop _merge
+	order indiv_num cohort_id_hplus rgi hplus hplus_CMA hplus_LMA hplus_lowess hplus_bspline
 save "Data/Clean/hsynth_df_wedges.dta", replace // this also has the imputed wages 
 
-	count if hplus_CMA 		== . 	// hplus: 75,304 	salred: 8,133
-	count if hplus_LMA 		== .	// hplus: 45,571	salred: 1,997
-	count if hplus_lowess 	== .	// hplus: 33,314	salred: 1,120
-	count if cohort_hplus 	== .	// hplus: 31,550	salred: 1,117
+	count if hplus_CMA 		== . 	// hplus: 75,304 	salred: 15,850 			59k
+	count if hplus_LMA 		== .	// hplus: 45,571	salred: 5,486			33k
+	count if hplus_lowess 	== .	// hplus: 33,314	salred: 3,855			22k
+	count if hplus_bspline 	== .	// hplus: 21,087	salred: 3,835			21k
+	count if cohort_hplus 	== .	// hplus: 31,550	salred: 1,117			21k
 
 	* STEP 3 : Applying Estimated Desired Hours Variation to True Desired Hours
 use Data/Clean/hsynth_df_wedges, clear 
@@ -483,7 +625,7 @@ use Data/Clean/hsynth_df_wedges, clear
 	* This can still be categorized into the three cases from the wages exercise. 
 	
 	* CASE 1: Individuals with no reported desired hours take their cohort's desired hours. 
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		gen hhplus_`var ' 		= hplus
 		replace hhplus_`var '	= hplus_`var' if hdu1 == 0 & hplus == . 
 	}
@@ -492,7 +634,7 @@ use Data/Clean/hsynth_df_wedges, clear
 	* In which case, his desired hours are constant. 
 	bysort indiv_num: egen mean_hplus = mean(hplus)
 	bysort indiv_num: egen sd_hplus 	= sd(hplus)
-	foreach var in CMA LMA lowess{
+	foreach var in CMA LMA lowess bspline {
 		bysort indiv_num: replace hhplus_`var' = mean_hplus if  hhplus_`var' == . & sd_hplus == 0 & hdu1 > 1 
 	}
 	
@@ -501,16 +643,17 @@ use Data/Clean/hsynth_df_wedges, clear
 	
 	* Computing the synthetic desired hours growth rates 	
 	preserve 
-		collapse (mean) hplus_CMA hplus_LMA hplus_lowess, by (datdeb_q cohort_id_hplus)
+		collapse (mean) hplus_CMA hplus_LMA hplus_lowess hplus_bspline, by (datdeb_q cohort_id_hplus)
 		sort cohort_id_hplus datdeb_q
-		foreach var in hplus_CMA hplus_LMA hplus_lowess{ 
+		foreach var in hplus_CMA hplus_LMA hplus_lowess hplus_bspline{ 
 			bysort cohort_id_hplus: gen growth_`var' = (`var' - `var'[_n-1]) / `var'[_n-1]
 		}
-		drop hplus_CMA hplus_LMA hplus_lowess
+		drop hplus_CMA hplus_LMA hplus_lowess hplus_bspline
 		tempfile synth_hgrowth_rates
 		save `synth_hgrowth_rates'
 	restore  
-
+	
+	cap drop _merge
 	merge m:1 cohort_id_hplus datdeb_q using `synth_hgrowth_rates'
 	drop _merge
 	
@@ -519,7 +662,7 @@ use Data/Clean/hsynth_df_wedges, clear
 	br if hdu1 == 1
 	sort indiv_num datdeb
 	
-	foreach var in hplus_CMA hplus_LMA hplus_lowess {
+	foreach var in hplus_CMA hplus_LMA hplus_lowess hplus_bspline {
 		* Forwards 
 		bysort indiv_num: replace h`var' = h`var'[_n-1] * (1+growth_`var') if (hdu1 == 1 & h`var' ==.)	
 	* Backwards: Dynamic
@@ -561,7 +704,7 @@ use Data/Clean/hsynth_df_wedges, clear
 	drop first_temp last_temp
 	
 	* Spreading values for the first and last synthtetic observations 
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		gen first_temp 	= hplus_`var' if rank_duh == `i' & hdu1 >=2 
 		gen last_temp 	= hplus_`var' if rank_duh == `i'+1 & hdu1 >=2 
 		cap drop first_synth_h`var' last_synth_h`var'
@@ -579,19 +722,19 @@ use Data/Clean/hsynth_df_wedges, clear
 	gen rel_pos = (datdeb - first_time) / (last_time - first_time) if inside 
 	
 	* The normalization formula: generating the adjustment coefficient
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		cap drop log_adj_`var'
 		gen log_adj_`var' = log(last_hplus / last_synth_h`var') * rel_pos + log(first_hplus / first_synth_h`var') * (1 - rel_pos)
 	}
 	
 	* Applying the adjustement coeff 
-	foreach var in CMA LMA lowess {
+	foreach var in CMA LMA lowess bspline {
 		replace hhplus_`var' = hplus_`var' * exp(log_adj_`var') if inside == 1
 	}
 	}
 	
 	* Lastly, applying growth rates to missing values outside the interval defined by "true" valules of desired hours.
-	foreach var in hplus_CMA hplus_LMA hplus_lowess {
+	foreach var in hplus_CMA hplus_LMA hplus_lowess hplus_bspline {
 		* Forwards 
 		bysort indiv_num: replace h`var' = h`var'[_n-1] * (1+growth_`var') if (hdu1 >1 & h`var' ==.)	
 		* Backwards: 
@@ -606,18 +749,28 @@ use Data/Clean/hsynth_df_wedges, clear
 
 	* MONTHLY COMPARISON 
 	preserve 	
-		collapse (mean) hhplus_lowess hhplus_CMA hhplus_LMA hplus, by(datdeb_m)
-		twoway(line hhplus_lowess datdeb_m)(line hhplus_CMA datdeb_m)(line hhplus_LMA datdeb_m)(line hplus datdeb_m) , title(Monthly Evolution of True and Synthetic Desired Hours) xtitle("") ytitle("Desired Hours") legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Desired Hours"))
-		graph export "Output/Figures/Synthetic/Mhplus_synth_comparison.png", as(png) replace 
+		collapse (mean) hhplus_lowess hhplus_CMA hhplus_LMA hhplus_bspline hplus, by(datdeb_m)
+		
+		twoway(line hhplus_CMA datdeb_m)(line hhplus_LMA datdeb_m)(line hplus datdeb_m, lcolor(gold)), xtitle("") ytitle("Desired Hours") legend(position(4) ring(0)label(1 "CMA Smoothing") label(2 "LMA Smoothing") label(3 "True Desired Hours"))
+		graph export "Output/Figures/Synthetic/hplus_CMA_LMA_monthly.png", as(png) replace 
+		
+		
+		twoway(line hhplus_lowess datdeb_m, lcolor(orange))(line hhplus_bspline datdeb_m, lcolor(green))(line hplus datdeb_m, lcolor(gold)), xtitle("") ytitle("Desired Hours") legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "Bspline Smoothing") label(3 "True Desired Hours"))
+		graph export "Output/Figures/Synthetic/hplus_bspline_lowess_monthly.png", as(png) replace 
 	restore 
 	
 	* QUARTERLY COMPARISON 
 	preserve 	
-		collapse (mean) hhplus_lowess hhplus_CMA hhplus_LMA hplus, by(datdeb_q)
-		twoway(line hhplus_lowess datdeb_q)(line hhplus_CMA datdeb_q)(line hhplus_LMA datdeb_q)(line hplus datdeb_q), title(Quarterly Evolution of True and Synthetic Desired Hours) xtitle("") ytitle("Desired Hours") legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "CMA Smoothing") label(3 "LMA Smoothing") label(4 "True Desired Hours"))
-		graph export "Output/Figures/Synthetic/Qhplus_synth_comparison.png", as(png) replace 
+		collapse (mean) hhplus_lowess hhplus_CMA hhplus_LMA hhplus_bspline hplus, by(datdeb_q)
+		
+		twoway(line hhplus_CMA datdeb_q)(line hhplus_LMA datdeb_q)(line hplus datdeb_q, lcolor(gold)), xtitle("") ytitle("Desired Hours") legend(position(4) ring(0)label(1 "CMA Smoothing") label(2 "LMA Smoothing") label(3 "True Desired Hours"))
+		graph export "Output/Figures/Synthetic/hplus_CMA_LMA_quarterly.png", as(png) replace 
+		
+		
+		twoway(line hhplus_lowess datdeb_q, lcolor(orange))(line hhplus_bspline datdeb_q, lcolor(green))(line hplus datdeb_q, lcolor(gold)), xtitle("") ytitle("Desired Hours") legend(position(4) ring(0) label(1 "Lowess Smoothing") label(2 "Bspline Smoothing") label(3 "True Desired Hours"))
+		graph export "Output/Figures/Synthetic/hplus_bspline_lowess_quarterly.png", as(png) replace 
 	restore 
 	
-	* RESPONSE RATES 
+	
 	
 save "Data/Clean/SYNTH_2.dta", replace 

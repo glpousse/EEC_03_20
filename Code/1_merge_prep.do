@@ -92,11 +92,10 @@ sort annee mois
 	
 	rename smic_m_brut_151 smic_m_brut 
 	drop ratio
+	lab var smic_h_brut "SMIC Horaire Brut"
+	lab var smic_m_brut "SMIC Mensuel Brut"
+	lab var smic_m_net "SMIC Mensuel Net"
 save "Data/SMIC/smic_FR.dta", replace
-
-******
-*NEED TO MAKE SURE THE MERGING SMIC AND VAR NAMES LINES UP THROUGH OUT. 
-******
 
 *****************************************************
 **# BORDER COUNTRY QUARTERLY ECONOMIC SITUATION *****

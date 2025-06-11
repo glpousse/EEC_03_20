@@ -33,5 +33,5 @@ preserve
 	sort datdeb
 	collapse (mean) hplus hplus_hat, by(datdeb_m)
 	twoway(line hplus datdeb_m)(line hplus_hat datdeb_m), xtitle("") ytitle("Desired Hours (Weekly)") legend(position(11) ring(0) label(1 "True Data") label(2 "XGBoost Estimates") size(small)) title("Avg. Monthly Values for True and XGBoost Imputed Desired Hours", size(medium))
-	export graph "Output/Figures/Synthetic/Mhplus_hat.png"
+	graph export "Output/Figures/Synthetic/Mhplus_hat.png"
 restore 
